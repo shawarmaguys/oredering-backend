@@ -1,0 +1,301 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =========================
+// ENUMS
+// =========================
+
+enum UserRole {
+  WORKER
+  MANAGER
+  ADMIN
+  SUPER_MANAGER
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  GENERATED
+  SENT
+  ACKNOWLEDGED
+  CANCELLED
+}
+
+enum ScheduleType {
+  DAILY
+  WEEKLY
+}
+
+// =========================
+// USERS
+// =========================
+
+model User {
+  id            String   @id @default(uuid()) @db.Uuid
+  fullName      String   @map("full_name")
+  email         String   @unique
+  passwordHash  String   @map("password_hash")
+  role          UserRole @default(WORKER)
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  userLocations         UserLocation[]
+  submittedStockRecords StockRecord[]     @relation("StockRecordSubmitter")
+  createdPurchaseOrders PurchaseOrder[]   @relation("PurchaseOrderCreator")
+  approvedPurchaseOrders PurchaseOrder[]  @relation("PurchaseOrderApprover")
+
+  @@map("users")
+}
+
+// =========================
+// LOCATIONS
+// =========================
+
+model Location {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  address   String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  userLocations       UserLocation[]
+  locationDepartments LocationDepartment[]
+  locationItems       LocationItem[]
+  stockRecords        StockRecord[]
+  purchaseOrders      PurchaseOrder[]
+  schedules           Schedule[]
+
+  @@map("locations")
+}
+
+model UserLocation {
+  userId     String @map("user_id") @db.Uuid
+  locationId String @map("location_id") @db.Uuid
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@id([userId, locationId])
+  @@map("user_locations")
+}
+
+// =========================
+// DEPARTMENTS
+// =========================
+
+model Department {
+  id       String @id @default(uuid()) @db.Uuid
+  code     String
+  fullName String @map("full_name")
+
+  // Relations
+  locationDepartments LocationDepartment[]
+  vendors             Vendor[]
+
+  @@map("departments")
+}
+
+model LocationDepartment {
+  locationId   String @map("location_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+
+  location   Location   @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@id([locationId, departmentId])
+  @@map("location_departments")
+}
+
+// =========================
+// VENDORS
+// =========================
+
+model Vendor {
+  id           String   @id @default(uuid()) @db.Uuid
+  displayName  String   @map("display_name")
+  channelName  String?  @map("channel_name")
+  email        String?
+  address1     String?
+  address2     String?
+  address3     String?
+  phone        String?
+  departmentId String   @map("department_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  department     Department      @relation(fields: [departmentId], references: [id])
+  items          Item[]
+  purchaseOrders PurchaseOrder[]
+  schedules      Schedule[]
+
+  @@map("vendors")
+}
+
+// =========================
+// ITEMS
+// =========================
+
+model Item {
+  id              String   @id @default(uuid()) @db.Uuid
+  vendorId        String   @map("vendor_id") @db.Uuid
+  displayName     String   @map("display_name")
+  baseUnitName    String   @map("base_unit_name")
+  displayUnitName String   @map("display_unit_name")
+  multiplier      Decimal  @db.Decimal(10, 4)
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relations
+  vendor             Vendor              @relation(fields: [vendorId], references: [id])
+  locationItems      LocationItem[]
+  stockRecordItems   StockRecordItem[]
+  purchaseOrderItems PurchaseOrderItem[]
+
+  @@map("items")
+}
+
+// =========================
+// LOCATION ITEMS
+// =========================
+
+model LocationItem {
+  id           String  @id @default(uuid()) @db.Uuid
+  locationId   String  @map("location_id") @db.Uuid
+  itemId       String  @map("item_id") @db.Uuid
+  parLevel     Decimal @default(0) @map("par_level") @db.Decimal(10, 4)
+  displayOrder Int     @default(0) @map("display_order")
+  isActive     Boolean @default(true) @map("is_active")
+
+  // Relations
+  location Location @relation(fields: [locationId], references: [id])
+  item     Item     @relation(fields: [itemId], references: [id])
+
+  @@unique([locationId, itemId])
+  @@map("location_items")
+}
+
+// =========================
+// STOCK RECORDS
+// =========================
+
+model StockRecord {
+  id             String    @id @default(uuid()) @db.Uuid
+  locationId     String    @map("location_id") @db.Uuid
+  submittedBy    String    @map("submitted_by") @db.Uuid
+  slackMessageTs String?   @map("slack_message_ts")
+  submittedAt    DateTime  @default(now()) @map("submitted_at")
+  approvedAt     DateTime? @map("approved_at")
+
+  // Relations
+  location       Location          @relation(fields: [locationId], references: [id])
+  submitter      User              @relation("StockRecordSubmitter", fields: [submittedBy], references: [id])
+  items          StockRecordItem[]
+  purchaseOrders PurchaseOrder[]
+
+  @@map("stock_records")
+}
+
+model StockRecordItem {
+  id                 String   @id @default(uuid()) @db.Uuid
+  stockRecordId      String   @map("stock_record_id") @db.Uuid
+  itemId             String   @map("item_id") @db.Uuid
+  enteredQuantity    Decimal  @map("entered_quantity") @db.Decimal(10, 4)
+  enteredUnit        String   @map("entered_unit")
+  normalizedQuantity Decimal  @map("normalized_quantity") @db.Decimal(10, 4)
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  // Relations
+  stockRecord StockRecord @relation(fields: [stockRecordId], references: [id], onDelete: Cascade)
+  item        Item        @relation(fields: [itemId], references: [id])
+
+  @@map("stock_record_items")
+}
+
+// =========================
+// PURCHASE ORDERS
+// =========================
+
+model PurchaseOrder {
+  id             String              @id @default(uuid()) @db.Uuid
+  vendorId       String              @map("vendor_id") @db.Uuid
+  locationId     String              @map("location_id") @db.Uuid
+  stockRecordId  String?             @map("stock_record_id") @db.Uuid
+  createdBy      String              @map("created_by") @db.Uuid
+  approvedBy     String?             @map("approved_by") @db.Uuid
+  status         PurchaseOrderStatus @default(DRAFT)
+  pdfUrl         String?             @map("pdf_url")
+  slackMessageTs String?             @map("slack_message_ts")
+  notes          String?
+  createdAt      DateTime            @default(now()) @map("created_at")
+  approvedAt     DateTime?           @map("approved_at")
+
+  // Relations
+  vendor      Vendor              @relation(fields: [vendorId], references: [id])
+  location    Location            @relation(fields: [locationId], references: [id])
+  stockRecord StockRecord?        @relation(fields: [stockRecordId], references: [id])
+  creator     User                @relation("PurchaseOrderCreator", fields: [createdBy], references: [id])
+  approver    User?               @relation("PurchaseOrderApprover", fields: [approvedBy], references: [id])
+  items       PurchaseOrderItem[]
+
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id              String   @id @default(uuid()) @db.Uuid
+  purchaseOrderId String   @map("purchase_order_id") @db.Uuid
+  itemId          String   @map("item_id") @db.Uuid
+  quantity        Decimal  @db.Decimal(10, 4)
+  unitName        String   @map("unit_name")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relations
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  item          Item          @relation(fields: [itemId], references: [id])
+
+  @@map("purchase_order_items")
+}
+
+// =========================
+// SCHEDULES
+// =========================
+
+model Schedule {
+  id           String       @id @default(uuid()) @db.Uuid
+  locationId   String       @map("location_id") @db.Uuid
+  vendorId     String       @map("vendor_id") @db.Uuid
+  scheduleType ScheduleType @map("schedule_type")
+  dayOfWeek    Int?         @map("day_of_week")
+  triggerTime  String       @map("trigger_time")
+  slackChannel String?      @map("slack_channel")
+  isActive     Boolean      @default(true) @map("is_active")
+  createdAt    DateTime     @default(now()) @map("created_at")
+
+  // Relations
+  location Location @relation(fields: [locationId], references: [id])
+  vendor   Vendor   @relation(fields: [vendorId], references: [id])
+
+  @@map("schedules")
+}
+
+// =========================
+// TRANSLATIONS
+// =========================
+
+model Translation {
+  id             String @id @default(uuid()) @db.Uuid
+  sourceText     String @map("source_text")
+  translatedText String @map("translated_text")
+  sourceLanguage String @map("source_language")
+  targetLanguage String @map("target_language")
+
+  @@map("translations")
+}

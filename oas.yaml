@@ -1,0 +1,713 @@
+openapi: 3.1.0
+info:
+  title: Inventory & Purchase Order Management API
+  version: 1.0.0
+  description: >
+    API for managing users, locations, departments, vendors, stock records,
+    purchase orders, schedules, and translations.
+
+servers:
+  - url: https://api.example.com/v1
+
+tags:
+  - name: Auth
+  - name: Users
+  - name: Locations
+  - name: Departments
+  - name: Vendors
+  - name: Items
+  - name: Stock Records
+  - name: Purchase Orders
+  - name: Schedules
+  - name: Translations
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+
+    UUID:
+      type: string
+      format: uuid
+
+    Timestamp:
+      type: string
+      format: date-time
+
+    UserRole:
+      type: string
+      enum:
+        - WORKER
+        - MANAGER
+        - ADMIN
+        - SUPER_MANAGER
+
+    PurchaseOrderStatus:
+      type: string
+      enum:
+        - DRAFT
+        - GENERATED
+        - SENT
+        - ACKNOWLEDGED
+        - CANCELLED
+
+    ScheduleType:
+      type: string
+      enum:
+        - DAILY
+        - WEEKLY
+
+    User:
+      type: object
+      required:
+        - id
+        - full_name
+        - email
+        - role
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        full_name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/UserRole'
+        is_active:
+          type: boolean
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        updated_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    CreateUserRequest:
+      type: object
+      required:
+        - full_name
+        - email
+        - password
+        - role
+      properties:
+        full_name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+        role:
+          $ref: '#/components/schemas/UserRole'
+
+    Location:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        name:
+          type: string
+        address:
+          type: string
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    Department:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        code:
+          type: string
+        full_name:
+          type: string
+
+    Vendor:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        display_name:
+          type: string
+        channel_name:
+          type: string
+        email:
+          type: string
+        address1:
+          type: string
+        address2:
+          type: string
+        address3:
+          type: string
+        phone:
+          type: string
+        department_id:
+          $ref: '#/components/schemas/UUID'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    CreateVendorRequest:
+      type: object
+      required:
+        - display_name
+        - department_id
+      properties:
+        display_name:
+          type: string
+        channel_name:
+          type: string
+        email:
+          type: string
+        address1:
+          type: string
+        address2:
+          type: string
+        address3:
+          type: string
+        phone:
+          type: string
+        department_id:
+          $ref: '#/components/schemas/UUID'
+
+    Item:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        vendor_id:
+          $ref: '#/components/schemas/UUID'
+        display_name:
+          type: string
+        base_unit_name:
+          type: string
+        display_unit_name:
+          type: string
+        multiplier:
+          type: number
+        is_active:
+          type: boolean
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    CreateItemRequest:
+      type: object
+      required:
+        - vendor_id
+        - display_name
+        - base_unit_name
+        - display_unit_name
+        - multiplier
+      properties:
+        vendor_id:
+          $ref: '#/components/schemas/UUID'
+        display_name:
+          type: string
+        base_unit_name:
+          type: string
+        display_unit_name:
+          type: string
+        multiplier:
+          type: number
+
+    LocationItem:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        location_id:
+          $ref: '#/components/schemas/UUID'
+        item_id:
+          $ref: '#/components/schemas/UUID'
+        par_level:
+          type: number
+        display_order:
+          type: integer
+        is_active:
+          type: boolean
+
+    StockRecord:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        location_id:
+          $ref: '#/components/schemas/UUID'
+        submitted_by:
+          $ref: '#/components/schemas/UUID'
+        slack_message_ts:
+          type: string
+        submitted_at:
+          $ref: '#/components/schemas/Timestamp'
+        approved_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    StockRecordItem:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        stock_record_id:
+          $ref: '#/components/schemas/UUID'
+        item_id:
+          $ref: '#/components/schemas/UUID'
+        entered_quantity:
+          type: number
+        entered_unit:
+          type: string
+        normalized_quantity:
+          type: number
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    CreateStockRecordRequest:
+      type: object
+      required:
+        - location_id
+        - items
+      properties:
+        location_id:
+          $ref: '#/components/schemas/UUID'
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - item_id
+              - entered_quantity
+              - entered_unit
+            properties:
+              item_id:
+                $ref: '#/components/schemas/UUID'
+              entered_quantity:
+                type: number
+              entered_unit:
+                type: string
+
+    PurchaseOrder:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        vendor_id:
+          $ref: '#/components/schemas/UUID'
+        location_id:
+          $ref: '#/components/schemas/UUID'
+        stock_record_id:
+          $ref: '#/components/schemas/UUID'
+        created_by:
+          $ref: '#/components/schemas/UUID'
+        approved_by:
+          $ref: '#/components/schemas/UUID'
+        status:
+          $ref: '#/components/schemas/PurchaseOrderStatus'
+        pdf_url:
+          type: string
+        slack_message_ts:
+          type: string
+        notes:
+          type: string
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        approved_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    PurchaseOrderItem:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        purchase_order_id:
+          $ref: '#/components/schemas/UUID'
+        item_id:
+          $ref: '#/components/schemas/UUID'
+        quantity:
+          type: number
+        unit_name:
+          type: string
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    CreatePurchaseOrderRequest:
+      type: object
+      required:
+        - vendor_id
+        - location_id
+        - items
+      properties:
+        vendor_id:
+          $ref: '#/components/schemas/UUID'
+        location_id:
+          $ref: '#/components/schemas/UUID'
+        stock_record_id:
+          $ref: '#/components/schemas/UUID'
+        notes:
+          type: string
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - item_id
+              - quantity
+              - unit_name
+            properties:
+              item_id:
+                $ref: '#/components/schemas/UUID'
+              quantity:
+                type: number
+              unit_name:
+                type: string
+
+    Schedule:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        location_id:
+          $ref: '#/components/schemas/UUID'
+        vendor_id:
+          $ref: '#/components/schemas/UUID'
+        schedule_type:
+          $ref: '#/components/schemas/ScheduleType'
+        day_of_week:
+          type: integer
+          minimum: 0
+          maximum: 6
+        trigger_time:
+          type: string
+          format: time
+        slack_channel:
+          type: string
+        is_active:
+          type: boolean
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    Translation:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        source_text:
+          type: string
+        translated_text:
+          type: string
+        source_language:
+          type: string
+        target_language:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        code:
+          type: string
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Login user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Successful login
+
+  /users:
+    get:
+      tags:
+        - Users
+      summary: List users
+      responses:
+        '200':
+          description: User list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+
+    post:
+      tags:
+        - Users
+      summary: Create user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created
+
+  /users/{id}:
+    get:
+      tags:
+        - Users
+      summary: Get user by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+      responses:
+        '200':
+          description: User details
+
+    patch:
+      tags:
+        - Users
+      summary: Update user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+      responses:
+        '200':
+          description: User updated
+
+    delete:
+      tags:
+        - Users
+      summary: Deactivate user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+      responses:
+        '204':
+          description: User deactivated
+
+  /locations:
+    get:
+      tags:
+        - Locations
+      summary: List locations
+      responses:
+        '200':
+          description: Location list
+
+    post:
+      tags:
+        - Locations
+      summary: Create location
+      responses:
+        '201':
+          description: Location created
+
+  /vendors:
+    get:
+      tags:
+        - Vendors
+      summary: List vendors
+      parameters:
+        - name: department_id
+          in: query
+          schema:
+            $ref: '#/components/schemas/UUID'
+      responses:
+        '200':
+          description: Vendor list
+
+    post:
+      tags:
+        - Vendors
+      summary: Create vendor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVendorRequest'
+      responses:
+        '201':
+          description: Vendor created
+
+  /items:
+    get:
+      tags:
+        - Items
+      summary: List items
+      parameters:
+        - name: vendor_id
+          in: query
+          schema:
+            $ref: '#/components/schemas/UUID'
+      responses:
+        '200':
+          description: Item list
+
+    post:
+      tags:
+        - Items
+      summary: Create item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateItemRequest'
+      responses:
+        '201':
+          description: Item created
+
+  /stock-records:
+    get:
+      tags:
+        - Stock Records
+      summary: List stock records
+      responses:
+        '200':
+          description: Stock record list
+
+    post:
+      tags:
+        - Stock Records
+      summary: Create stock record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStockRecordRequest'
+      responses:
+        '201':
+          description: Stock record created
+
+  /stock-records/{id}:
+    get:
+      tags:
+        - Stock Records
+      summary: Get stock record
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+      responses:
+        '200':
+          description: Stock record details
+
+  /purchase-orders:
+    get:
+      tags:
+        - Purchase Orders
+      summary: List purchase orders
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/PurchaseOrderStatus'
+      responses:
+        '200':
+          description: Purchase order list
+
+    post:
+      tags:
+        - Purchase Orders
+      summary: Create purchase order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePurchaseOrderRequest'
+      responses:
+        '201':
+          description: Purchase order created
+
+  /purchase-orders/{id}:
+    get:
+      tags:
+        - Purchase Orders
+      summary: Get purchase order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+      responses:
+        '200':
+          description: Purchase order details
+
+  /purchase-orders/{id}/approve:
+    post:
+      tags:
+        - Purchase Orders
+      summary: Approve purchase order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+      responses:
+        '200':
+          description: Purchase order approved
+
+  /schedules:
+    get:
+      tags:
+        - Schedules
+      summary: List schedules
+      responses:
+        '200':
+          description: Schedule list
+
+    post:
+      tags:
+        - Schedules
+      summary: Create schedule
+      responses:
+        '201':
+          description: Schedule created
+
+  /translations:
+    get:
+      tags:
+        - Translations
+      summary: List translations
+      responses:
+        '200':
+          description: Translation list
+
+    post:
+      tags:
+        - Translations
+      summary: Create translation
+      responses:
+        '201':
+          description: Translation created
