@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { SchedulesService } from './schedules.service';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -22,5 +22,12 @@ export class SchedulesController {
   @Roles(UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
   async findAll() {
     return this.schedulesService.findAll();
+  }
+
+  @Post(':id/trigger')
+  @Roles(UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async trigger(@Param('id') id: string) {
+    return this.schedulesService.trigger(id);
   }
 }

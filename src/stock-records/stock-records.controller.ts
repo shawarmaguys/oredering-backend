@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Body,
   Param,
   UseGuards,
@@ -11,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { StockRecordsService } from './stock-records.service';
 import { CreateStockRecordDto } from './dto/create-stock-record.dto';
+import { CompleteStockRecordDto } from './dto/complete-stock-record.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -42,5 +44,16 @@ export class StockRecordsController {
   @Roles(UserRole.WORKER, UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.stockRecordsService.findOne(id);
+  }
+
+  @Patch(':id/complete')
+  @Roles(UserRole.WORKER, UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async complete(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() completeStockRecordDto: CompleteStockRecordDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.stockRecordsService.complete(id, completeStockRecordDto, user.id);
   }
 }

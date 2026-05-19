@@ -196,14 +196,15 @@ model LocationItem {
 model StockRecord {
   id             String    @id @default(uuid()) @db.Uuid
   locationId     String    @map("location_id") @db.Uuid
-  submittedBy    String    @map("submitted_by") @db.Uuid
+  submittedBy    String?   @map("submitted_by") @db.Uuid
   slackMessageTs String?   @map("slack_message_ts")
   submittedAt    DateTime  @default(now()) @map("submitted_at")
   approvedAt     DateTime? @map("approved_at")
+  isCompleted    Boolean   @default(true) @map("is_completed")
 
   // Relations
   location       Location          @relation(fields: [locationId], references: [id])
-  submitter      User              @relation("StockRecordSubmitter", fields: [submittedBy], references: [id])
+  submitter      User?             @relation("StockRecordSubmitter", fields: [submittedBy], references: [id])
   items          StockRecordItem[]
   purchaseOrders PurchaseOrder[]
 

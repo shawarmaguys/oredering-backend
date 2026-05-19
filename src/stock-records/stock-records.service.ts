@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateStockRecordDto } from './dto/create-stock-record.dto';
+import { CompleteStockRecordDto } from './dto/complete-stock-record.dto';
 
 @Injectable()
 export class StockRecordsService {
@@ -134,5 +135,86 @@ export class StockRecordsService {
     }
 
     return record;
+  }
+
+  async complete(id: string, completeDto: CompleteStockRecordDto, userId: string) {
+    const record = await this.prisma.stockRecord.findUnique({
+      where: { id },
+    });
+
+    if (!record) {
+      throw new NotFoundException(`Stock record with ID ${id} not found`);
+    }
+
+    if (record.isCompleted) {
+      throw new BadRequestException('Stock record is already completed');
+    }
+
+    const { items } = completeDto;
+    if (items.length === 0) {
+      throw new BadRequestException('Stock record must contain at least one item');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Delete existing placeholder items
+      await tx.stockRecordItem.deleteMany({
+        where: { stockRecordId: id },
+      });
+
+      // 2. Fetch all items to compute normalized quantities
+      const itemIds = items.map((i) => i.itemId);
+      const dbItems = await tx.item.findMany({
+        where: { id: { in: itemIds } },
+      });
+
+      const dbItemMap = new Map(dbItems.map((item) => [item.id, item]));
+
+      // 3. Create Stock Record Items
+      for (const itemDto of items) {
+        const dbItem = dbItemMap.get(itemDto.itemId);
+        if (!dbItem) {
+          throw new NotFoundException(`Item with ID ${itemDto.itemId} not found`);
+        }
+
+        const multiplier = Number(dbItem.multiplier) || 1;
+        const normalizedQuantity = itemDto.enteredQuantity * multiplier;
+
+        await tx.stockRecordItem.create({
+          data: {
+            stockRecordId: id,
+            itemId: itemDto.itemId,
+            enteredQuantity: itemDto.enteredQuantity,
+            enteredUnit: itemDto.enteredUnit,
+            normalizedQuantity: normalizedQuantity,
+          },
+        });
+      }
+
+      // 4. Update Stock Record to complete
+      await tx.stockRecord.update({
+        where: { id },
+        data: {
+          isCompleted: true,
+          submittedBy: userId,
+          submittedAt: new Date(),
+        },
+      });
+
+      // Fetch completed record
+      return tx.stockRecord.findUnique({
+        where: { id },
+        include: {
+          items: {
+            include: {
+              item: true,
+            },
+          },
+          submitter: {
+            select: { id: true, fullName: true, email: true, role: true },
+          },
+          location: true,
+        },
+      });
+    });
   }
 }
