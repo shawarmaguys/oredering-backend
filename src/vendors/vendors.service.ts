@@ -42,4 +42,53 @@ export class VendorsService {
       orderBy: { displayName: 'asc' },
     });
   }
+
+  async findAllDepartments() {
+    let departments = await this.prisma.department.findMany({
+      orderBy: { fullName: 'asc' },
+    });
+
+    if (departments.length === 0) {
+      const standard = [
+        { id: 'd3b07384-d113-4ec8-a5b6-7bbbcda20e6a', code: 'KIT', fullName: 'Kitchen & Foods' },
+        { id: 'a2b07384-d113-4ec8-a5b6-7bbbcda20e6b', code: 'BEV', fullName: 'Beverages & Soft Drinks' },
+        { id: 'b2b07384-d113-4ec8-a5b6-7bbbcda20e6c', code: 'PKG', fullName: 'Packaging & Janitorial' },
+        { id: 'c2b07384-d113-4ec8-a5b6-7bbbcda20e6d', code: 'GEN', fullName: 'General Supply' },
+      ];
+
+      await this.prisma.department.createMany({
+        data: standard,
+      });
+
+      departments = await this.prisma.department.findMany({
+        orderBy: { fullName: 'asc' },
+      });
+    }
+
+    return departments;
+  }
+
+  async update(id: string, updateVendorDto: any) {
+    const { departmentId, ...vendorData } = updateVendorDto;
+
+    if (departmentId) {
+      const department = await this.prisma.department.findUnique({
+        where: { id: departmentId },
+      });
+      if (!department) {
+        throw new NotFoundException(`Department with ID "${departmentId}" not found`);
+      }
+    }
+
+    return this.prisma.vendor.update({
+      where: { id },
+      data: {
+        ...vendorData,
+        ...(departmentId ? { departmentId } : {}),
+      },
+      include: {
+        department: true,
+      },
+    });
+  }
 }

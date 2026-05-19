@@ -2,15 +2,17 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Param,
   Body,
   Query,
   UseGuards,
   HttpCode,
   HttpStatus,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { VendorsService } from './vendors.service';
 import { CreateVendorDto } from './dto/create-vendor.dto';
+import { UpdateVendorDto } from './dto/update-vendor.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -31,5 +33,19 @@ export class VendorsController {
   @Get()
   async findAll(@Query('department_id') departmentId?: string) {
     return this.vendorsService.findAll(departmentId);
+  }
+
+  @Get('departments')
+  async findAllDepartments() {
+    return this.vendorsService.findAllDepartments();
+  }
+
+  @Patch(':id')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_MANAGER, UserRole.MANAGER)
+  async update(
+    @Param('id') id: string,
+    @Body() updateVendorDto: UpdateVendorDto,
+  ) {
+    return this.vendorsService.update(id, updateVendorDto);
   }
 }
