@@ -1,6 +1,7 @@
 import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateLocationDto } from './dto/create-location.dto';
+import { encryptToken, decryptToken } from '../common/utils/crypto.util';
 
 @Injectable()
 export class LocationsService {
@@ -17,14 +18,27 @@ export class LocationsService {
     }
 
     return this.prisma.location.create({
-      data: { name, address, phone, email, slackBotToken, slackUserToken },
+      data: { 
+        name, 
+        address, 
+        phone, 
+        email, 
+        slackBotToken: encryptToken(slackBotToken), 
+        slackUserToken: encryptToken(slackUserToken) 
+      },
     });
   }
 
   async findAll() {
-    return this.prisma.location.findMany({
+    const locations = await this.prisma.location.findMany({
       orderBy: { name: 'asc' },
     });
+    
+    return locations.map(loc => ({
+      ...loc,
+      slackBotToken: decryptToken(loc.slackBotToken),
+      slackUserToken: decryptToken(loc.slackUserToken)
+    }));
   }
 
   async update(id: string, updateLocationDto: any) {
@@ -41,7 +55,14 @@ export class LocationsService {
 
     return this.prisma.location.update({
       where: { id },
-      data: { name, address, phone, email, slackBotToken, slackUserToken },
+      data: { 
+        name, 
+        address, 
+        phone, 
+        email, 
+        slackBotToken: slackBotToken !== undefined ? encryptToken(slackBotToken) : undefined, 
+        slackUserToken: slackUserToken !== undefined ? encryptToken(slackUserToken) : undefined 
+      },
     });
   }
 

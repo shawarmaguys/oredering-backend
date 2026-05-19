@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
+import { decryptToken } from '../common/utils/crypto.util';
 
 @Injectable()
 export class SchedulesService implements OnModuleInit {
@@ -149,7 +150,7 @@ export class SchedulesService implements OnModuleInit {
       // 3. Send Slack Message if configured on both location and schedule
       let slackMessageTs: string | null = null;
       const slackChannel = schedule.vendor?.channelName;
-      const botToken = schedule.location?.slackBotToken;
+      const botToken = decryptToken(schedule.location?.slackBotToken);
 
       console.log(botToken, 'botToken');
       console.log(slackChannel, 'slackChannel');
