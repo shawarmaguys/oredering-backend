@@ -146,9 +146,8 @@ export class StockRecordsService {
       throw new NotFoundException(`Stock record with ID ${id} not found`);
     }
 
-    if (record.isCompleted) {
-      throw new BadRequestException('Stock record is already completed');
-    }
+    // Removed the check that prevented editing an already completed record
+
 
     const { items } = completeDto;
     if (items.length === 0) {

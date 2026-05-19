@@ -151,13 +151,15 @@ export class SchedulesService implements OnModuleInit {
       const slackChannel = schedule.vendor?.channelName;
       const botToken = schedule.location?.slackBotToken;
 
+      console.log(botToken, 'botToken');
+      console.log(slackChannel, 'slackChannel');
 
       if (botToken && slackChannel) {
         try {
           const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
           const formUrl = `${frontendUrl}/dashboard?recordId=${stockRecord.id}`;
           console.log(formUrl, 'formUrl');
-          const text = `🔔 *Stock Audit Required* 🔔\n` +
+          const text = `🔔 *PLEASE IGNORE THIS TEST MESSAGE* 🔔\n` +
             `A new stock record count has been initiated for *${schedule.location.name}* (Vendor: *${schedule.vendor.displayName}*).\n` +
             `Please complete the stock recording as soon as possible.\n` +
             `• *Record ID:* \`${stockRecord.id}\`\n` +
