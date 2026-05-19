@@ -63,7 +63,9 @@ model User {
 model Location {
   id        String   @id @default(uuid()) @db.Uuid
   name      String   @unique
-  address   String?
+  address   String
+  phone     String
+  email     String
   createdAt DateTime @default(now()) @map("created_at")
 
   // Relations
