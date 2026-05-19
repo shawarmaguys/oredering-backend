@@ -122,8 +122,7 @@ export class SchedulesService implements OnModuleInit {
 
     // 2. Create Stock Record (draft/incomplete) in a transaction
     return this.prisma.$transaction(async (tx) => {
-      // console.log("schedule", schedule);
-      
+
       const stockRecord = await tx.stockRecord.create({
         data: {
           locationId: schedule.locationId,
@@ -133,12 +132,9 @@ export class SchedulesService implements OnModuleInit {
         },
       });
 
-      // console.log("stockRecord", stockRecord);
-
       // Create StockRecordItems with 0/placeholder quantities
       for (const locItem of locationItems) {
-        console.log("locItem", locItem);
-        
+
         await tx.stockRecordItem.create({
           data: {
             stockRecordId: stockRecord.id,
@@ -150,15 +146,11 @@ export class SchedulesService implements OnModuleInit {
         });
       }
 
-      console.log("locationItems", locationItems);
-
       // 3. Send Slack Message if configured on both location and schedule
       let slackMessageTs: string | null = null;
       const slackChannel = schedule.vendor?.channelName;
       const botToken = schedule.location?.slackBotToken;
 
-      console.log("slackChannel", slackChannel);
-      console.log("botToken", botToken);
 
       if (botToken && slackChannel) {
         try {
