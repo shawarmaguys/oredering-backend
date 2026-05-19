@@ -66,6 +66,8 @@ model Location {
   address   String
   phone     String
   email     String
+  slackBotToken  String?  @map("slack_bot_token")
+  slackUserToken String?  @map("slack_user_token")
   createdAt DateTime @default(now()) @map("created_at")
 
   // Relations

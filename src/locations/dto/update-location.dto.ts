@@ -16,4 +16,12 @@ export class UpdateLocationDto {
   @IsEmail()
   @IsOptional()
   email?: string;
+
+  @IsString()
+  @IsOptional()
+  slackBotToken?: string;
+
+  @IsString()
+  @IsOptional()
+  slackUserToken?: string;
 }

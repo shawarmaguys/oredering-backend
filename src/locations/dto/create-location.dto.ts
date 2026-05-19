@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsString } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateLocationDto {
   @IsString()
@@ -16,5 +16,13 @@ export class CreateLocationDto {
   @IsEmail()
   @IsNotEmpty()
   email: string;
+
+  @IsString()
+  @IsOptional()
+  slackBotToken?: string;
+
+  @IsString()
+  @IsOptional()
+  slackUserToken?: string;
 }
 
