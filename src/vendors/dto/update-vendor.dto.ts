@@ -9,7 +9,7 @@ export class UpdateVendorDto {
   @IsOptional()
   channelName?: string;
 
-  @IsEmail()
+  @IsString()
   @IsOptional()
   email?: string;
 

@@ -9,7 +9,7 @@ export class CreateVendorDto {
   @IsOptional()
   channelName?: string;
 
-  @IsEmail()
+  @IsString()
   @IsOptional()
   email?: string;
 

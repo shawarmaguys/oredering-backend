@@ -25,4 +25,8 @@ export class UpdateItemDto {
   @IsString()
   @IsOptional()
   productCode?: string;
+
+  @IsString()
+  @IsOptional()
+  note?: string;
 }

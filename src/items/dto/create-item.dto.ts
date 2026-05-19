@@ -14,14 +14,19 @@ export class CreateItemDto {
   baseUnitName: string;
 
   @IsString()
-  @IsNotEmpty()
-  displayUnitName: string;
+  @IsOptional()
+  displayUnitName?: string;
 
   @IsNumber()
   @Min(0.0001)
-  multiplier: number;
+  @IsOptional()
+  multiplier?: number;
 
   @IsString()
   @IsOptional()
   productCode?: string;
+
+  @IsString()
+  @IsOptional()
+  note?: string;
 }
