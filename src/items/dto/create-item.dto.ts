@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsUUID, IsNumber, Min } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsUUID, IsNumber, Min } from 'class-validator';
 
 export class CreateItemDto {
   @IsUUID()
@@ -20,4 +20,8 @@ export class CreateItemDto {
   @IsNumber()
   @Min(0.0001)
   multiplier: number;
+
+  @IsString()
+  @IsOptional()
+  productCode?: string;
 }

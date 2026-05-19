@@ -153,6 +153,7 @@ model Item {
   baseUnitName    String   @map("base_unit_name")
   displayUnitName String   @map("display_unit_name")
   multiplier      Decimal  @db.Decimal(10, 4)
+  productCode     String?  @map("product_code")
   isActive        Boolean  @default(true) @map("is_active")
   createdAt       DateTime @default(now()) @map("created_at")
 

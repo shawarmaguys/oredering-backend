@@ -35,4 +35,28 @@ export class ItemsService {
       orderBy: { displayName: 'asc' },
     });
   }
+
+  async update(id: string, updateItemDto: any) {
+    const { vendorId, ...itemData } = updateItemDto;
+
+    if (vendorId) {
+      const vendor = await this.prisma.vendor.findUnique({
+        where: { id: vendorId },
+      });
+      if (!vendor) {
+        throw new NotFoundException(`Vendor with ID ${vendorId} not found`);
+      }
+    }
+
+    return this.prisma.item.update({
+      where: { id },
+      data: {
+        ...itemData,
+        ...(vendorId ? { vendorId } : {}),
+      },
+      include: {
+        vendor: true,
+      },
+    });
+  }
 }
