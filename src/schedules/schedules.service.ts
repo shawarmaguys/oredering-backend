@@ -154,11 +154,15 @@ export class SchedulesService implements OnModuleInit {
 
       if (botToken && slackChannel) {
         try {
+          const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+          const formUrl = `${frontendUrl}/dashboard?recordId=${stockRecord.id}`;
+          console.log(formUrl, 'formUrl');
           const text = `🔔 *Stock Audit Required* 🔔\n` +
             `A new stock record count has been initiated for *${schedule.location.name}* (Vendor: *${schedule.vendor.displayName}*).\n` +
             `Please complete the stock recording as soon as possible.\n` +
             `• *Record ID:* \`${stockRecord.id}\`\n` +
-            `• *Channel:* #${slackChannel}`;
+            `• *Channel:* #${slackChannel}\n\n` +
+            `👉 *<${formUrl}|Click here to open the Stock Recording Form>*`;
 
           const response = await fetch('https://slack.com/api/chat.postMessage', {
             method: 'POST',
@@ -172,7 +176,7 @@ export class SchedulesService implements OnModuleInit {
             }),
           });
 
-          console.log("response", response);
+          // console.log("response", response);
 
           const resData: any = await response.json();
           if (resData.ok) {
