@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto';
+import { UpdatePurchaseOrderDto } from './dto/update-purchase-order.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -43,6 +44,16 @@ export class PurchaseOrdersController {
   @Roles(UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.purchaseOrdersService.findOne(id);
+  }
+
+  @Post(':id')
+  @Roles(UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() updatePurchaseOrderDto: UpdatePurchaseOrderDto,
+  ) {
+    return this.purchaseOrdersService.update(id, updatePurchaseOrderDto);
   }
 
   @Post(':id/approve')

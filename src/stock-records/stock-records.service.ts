@@ -253,23 +253,41 @@ export class StockRecordsService {
             const parMap = new Map(locationItems.map((li) => [li.itemId, Number(li.parLevel) || 0]));
 
             // Calculate PO items
-            const poItemsToCreate: Array<{ itemId: string; quantity: number; unitName: string }> = [];
+            // Calculate PO items
+            const poItemsToCreate: Array<{
+              itemId: string;
+              quantity: number;
+              unitName: string;
+              basicQuantity: number;
+              secondaryQuantity: number;
+              normalizedQuantity: number;
+              parLevel: number;
+              suggestedQuantity: number;
+            }> = [];
+
             for (const ri of fullRecord.items) {
               const item = ri.item;
               const parLevel = parMap.get(ri.itemId) || 0;
               const multiplier = Number(item.multiplier) || 1;
-              const countedQty = Number(ri.secondaryQuantity) + (Number(ri.basicQuantity) / multiplier);
 
-              console.log('Item:', item, 'Par Level:', parLevel, 'Counted Qty:', countedQty);
+              const basicQty = Number(ri.basicQuantity) || 0;
+              const secondaryQty = Number(ri.secondaryQuantity) || 0;
+              const countedQty = secondaryQty + (basicQty / multiplier);
 
-              const orderQty = Math.max(0, parLevel - countedQty);
-              if (orderQty > 0) {
-                poItemsToCreate.push({
-                  itemId: ri.itemId,
-                  quantity: orderQty,
-                  unitName: item.displayUnitName || 'pcs',
-                });
-              }
+              const roundedNormalized = Math.round(countedQty);
+              const roundedPar = Math.round(parLevel);
+              const suggestedQty = Math.max(0, roundedPar - roundedNormalized);
+
+              poItemsToCreate.push({
+                itemId: ri.itemId,
+                quantity: suggestedQty,
+                unitName: item.displayUnitName || 'pcs',
+                basicQuantity: basicQty,
+                secondaryQuantity: secondaryQty,
+                normalizedQuantity: roundedNormalized,
+                parLevel: roundedPar,
+                suggestedQuantity: suggestedQty,
+              });
             }
 
             // Create Draft PO

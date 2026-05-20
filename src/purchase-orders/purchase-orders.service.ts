@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto';
+import { UpdatePurchaseOrderDto } from './dto/update-purchase-order.dto';
 import { PurchaseOrderStatus } from '@prisma/client';
 
 @Injectable()
@@ -174,6 +175,54 @@ export class PurchaseOrdersService {
           select: { id: true, fullName: true, email: true, role: true },
         },
       },
+    });
+  }
+
+  async update(id: string, updatePurchaseOrderDto: UpdatePurchaseOrderDto) {
+    const po = await this.prisma.purchaseOrder.findUnique({
+      where: { id },
+    });
+
+    if (!po) {
+      throw new NotFoundException(`Purchase order with ID ${id} not found`);
+    }
+
+    if (po.status !== PurchaseOrderStatus.DRAFT) {
+      throw new BadRequestException('Can only update DRAFT purchase orders');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // Update each item quantity
+      for (const itemDto of updatePurchaseOrderDto.items) {
+        await tx.purchaseOrderItem.updateMany({
+          where: {
+            purchaseOrderId: id,
+            itemId: itemDto.itemId,
+          },
+          data: {
+            quantity: itemDto.quantity,
+          },
+        });
+      }
+
+      return tx.purchaseOrder.findUnique({
+        where: { id },
+        include: {
+          items: {
+            include: {
+              item: true,
+            },
+          },
+          vendor: true,
+          location: true,
+          creator: {
+            select: { id: true, fullName: true, email: true, role: true },
+          },
+          approver: {
+            select: { id: true, fullName: true, email: true, role: true },
+          },
+        },
+      });
     });
   }
 }
