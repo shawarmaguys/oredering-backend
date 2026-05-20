@@ -13,6 +13,7 @@ import {
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto';
 import { UpdatePurchaseOrderDto } from './dto/update-purchase-order.dto';
+import { SendPurchaseOrderDto } from './dto/send-purchase-order.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -64,5 +65,16 @@ export class PurchaseOrdersController {
     @CurrentUser() user: any,
   ) {
     return this.purchaseOrdersService.approve(id, user.id);
+  }
+
+  @Post(':id/send')
+  @Roles(UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async send(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() sendPurchaseOrderDto: SendPurchaseOrderDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.purchaseOrdersService.send(id, sendPurchaseOrderDto, user.id);
   }
 }
