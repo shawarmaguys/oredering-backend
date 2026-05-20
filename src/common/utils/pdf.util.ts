@@ -311,6 +311,29 @@ export async function generatePurchaseOrderPdf(po: any): Promise<Buffer> {
         isAltRow = !isAltRow;
       }
 
+      // Notes Section
+      if (po.notes) {
+        y += 20;
+        if (y > doc.page.height - 100) {
+          doc.addPage();
+          doc.rect(0, 0, doc.page.width, 15).fill(primaryColor);
+          y = 40;
+        }
+
+        doc.fillColor(textColor)
+          .font('Helvetica-Bold')
+          .fontSize(9)
+          .text('Notes / Dispatch Instructions:', 50, y);
+        
+        y += 14;
+        doc.fillColor(secondaryTextColor)
+          .font('Helvetica')
+          .fontSize(9)
+          .text(po.notes, 50, y, { width: doc.page.width - 100 });
+        
+        y += Math.ceil(doc.heightOfString(po.notes, { width: doc.page.width - 100 })) + 10;
+      }
+
       // Footer
       y += 20;
       if (y > doc.page.height - 60) {

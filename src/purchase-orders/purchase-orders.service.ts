@@ -265,6 +265,14 @@ export class PurchaseOrdersService {
       throw new NotFoundException(`Purchase order with ID ${id} not found`);
     }
 
+    if (sendPurchaseOrderDto.notes !== undefined) {
+      await this.prisma.purchaseOrder.update({
+        where: { id },
+        data: { notes: sendPurchaseOrderDto.notes },
+      });
+      po.notes = sendPurchaseOrderDto.notes;
+    }
+
     // 1. Generate the purchase order PDF buffer
     const pdfBuffer = await generatePurchaseOrderPdf(po);
 

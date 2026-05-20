@@ -13,4 +13,8 @@ export class SendPurchaseOrderDto {
   @IsString()
   @IsOptional()
   body?: string;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
 }
