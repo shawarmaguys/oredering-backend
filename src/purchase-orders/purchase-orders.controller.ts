@@ -37,8 +37,11 @@ export class PurchaseOrdersController {
 
   @Get()
   @Roles(UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
-  async findAll(@Query('status') status?: PurchaseOrderStatus) {
-    return this.purchaseOrdersService.findAll(status);
+  async findAll(
+    @CurrentUser() user: any,
+    @Query('status') status?: PurchaseOrderStatus,
+  ) {
+    return this.purchaseOrdersService.findAll(user, status);
   }
 
   @Get(':id')

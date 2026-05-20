@@ -93,9 +93,22 @@ export class PurchaseOrdersService {
     });
   }
 
-  async findAll(status?: PurchaseOrderStatus) {
+  async findAll(user: any, status?: PurchaseOrderStatus) {
+    const where: any = {};
+    if (status) {
+      where.status = status;
+    }
+
+    if (user.role !== 'ADMIN') {
+      const userLocs = await this.prisma.userLocation.findMany({
+        where: { userId: user.id },
+      });
+      const locationIds = userLocs.map((ul) => ul.locationId);
+      where.locationId = { in: locationIds };
+    }
+
     return this.prisma.purchaseOrder.findMany({
-      where: status ? { status } : {},
+      where,
       include: {
         items: {
           include: {

@@ -83,8 +83,19 @@ export class StockRecordsService {
     });
   }
 
-  async findAll() {
+  async findAll(user: any) {
+    const where: any = {};
+
+    if (user.role !== 'ADMIN') {
+      const userLocs = await this.prisma.userLocation.findMany({
+        where: { userId: user.id },
+      });
+      const locationIds = userLocs.map((ul) => ul.locationId);
+      where.locationId = { in: locationIds };
+    }
+
     return this.prisma.stockRecord.findMany({
+      where,
       include: {
         items: {
           include: {

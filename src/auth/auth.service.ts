@@ -17,6 +17,7 @@ export class AuthService {
     // Find user
     const user = await this.prisma.user.findUnique({
       where: { email },
+      include: { userLocations: true }
     });
 
     if (!user || !user.isActive) {
@@ -38,6 +39,7 @@ export class AuthService {
         fullName: user.fullName,
         email: user.email,
         role: user.role,
+        locationIds: user.userLocations.map(ul => ul.locationId)
       },
     };
   }

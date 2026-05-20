@@ -36,8 +36,8 @@ export class StockRecordsController {
 
   @Get()
   @Roles(UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
-  async findAll() {
-    return this.stockRecordsService.findAll();
+  async findAll(@CurrentUser() user: any) {
+    return this.stockRecordsService.findAll(user);
   }
 
   @Get(':id')
