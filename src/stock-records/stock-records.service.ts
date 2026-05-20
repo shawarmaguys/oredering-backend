@@ -234,6 +234,64 @@ export class StockRecordsService {
         const department = vendor?.department;
         const vendorName = vendor?.displayName || 'Unknown Vendor';
 
+        let createdPoId: string | null = null;
+
+        // If a purchase order doesn't already exist for this stock record, draft one
+        if (vendor) {
+          const existingPo = await this.prisma.purchaseOrder.findFirst({
+            where: { stockRecordId: id },
+          });
+
+          if (!existingPo) {
+            // Find all location items to get their parLevels
+            const locationItems = await this.prisma.locationItem.findMany({
+              where: {
+                locationId: fullRecord.locationId,
+                itemId: { in: fullRecord.items.map((ri) => ri.itemId) },
+              },
+            });
+            const parMap = new Map(locationItems.map((li) => [li.itemId, Number(li.parLevel) || 0]));
+
+            // Calculate PO items
+            const poItemsToCreate: Array<{ itemId: string; quantity: number; unitName: string }> = [];
+            for (const ri of fullRecord.items) {
+              const item = ri.item;
+              const parLevel = parMap.get(ri.itemId) || 0;
+              const multiplier = Number(item.multiplier) || 1;
+              const countedQty = Number(ri.secondaryQuantity) + (Number(ri.basicQuantity) / multiplier);
+
+              console.log('Item:', item, 'Par Level:', parLevel, 'Counted Qty:', countedQty);
+
+              const orderQty = Math.max(0, parLevel - countedQty);
+              if (orderQty > 0) {
+                poItemsToCreate.push({
+                  itemId: ri.itemId,
+                  quantity: orderQty,
+                  unitName: item.displayUnitName || 'pcs',
+                });
+              }
+            }
+
+            // Create Draft PO
+            const po = await this.prisma.purchaseOrder.create({
+              data: {
+                vendorId: vendor.id,
+                locationId: fullRecord.locationId,
+                stockRecordId: id,
+                createdBy: userId,
+                status: 'DRAFT',
+                notes: `Auto-drafted from Stock Audit Count #${id.slice(0, 8)}`,
+                items: {
+                  create: poItemsToCreate,
+                },
+              },
+            });
+            createdPoId = po.id;
+          } else {
+            createdPoId = existingPo.id;
+          }
+        }
+
         const botToken = decryptToken(fullRecord.location?.slackBotToken);
         const slackChannel = department?.slackChannel;
 
@@ -247,13 +305,22 @@ export class StockRecordsService {
 
           const safeLocationName = fullRecord.location.name.replace(/[^a-zA-Z0-9]/g, '_');
           const fileName = `StockAudit_${safeLocationName}_${new Date().toISOString().split('T')[0]}.pdf`;
-          const message = `📄 *Stock Count Audit Submitted*\n` +
+
+          let message = `📄 *Stock Count Audit Submitted*\n` +
             `• *Location:* ${fullRecord.location.name}\n` +
             `• *Vendor:* ${vendorName}\n` +
             `• *Department:* ${department?.fullName || 'N/A'}\n` +
             `• *Submitted By:* ${fullRecord.submitter?.fullName || 'System'}\n` +
-            `• *Date:* ${new Date(fullRecord.submittedAt).toLocaleString()}\n\n` +
-            `Please find the detailed PDF report attached below.`;
+            `• *Date:* ${new Date(fullRecord.submittedAt).toLocaleString()}\n\n`;
+
+          if (createdPoId) {
+            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+            message += `🛍️ *Auto-Drafted Purchase Order Created*\n` +
+              `• *Status:* DRAFT\n` +
+              `• *Review Link:* <${frontendUrl}/dashboard/admin/reports?poId=${createdPoId}|Review & Approve Purchase Order (Managers/Admins Only)>\n\n`;
+          }
+
+          message += `Please find the detailed PDF report attached below.`;
 
           // Step 1: Get upload URL and file ID
           const urlEncodedBody = new URLSearchParams();
