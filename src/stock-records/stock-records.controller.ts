@@ -35,7 +35,7 @@ export class StockRecordsController {
   }
 
   @Get()
-  @Roles(UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
+  @Roles(UserRole.WORKER, UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
   async findAll(@CurrentUser() user: any) {
     return this.stockRecordsService.findAll(user);
   }

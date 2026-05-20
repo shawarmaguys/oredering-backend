@@ -61,7 +61,7 @@ export class PurchaseOrdersController {
   }
 
   @Post(':id/approve')
-  @Roles(UserRole.SUPER_MANAGER, UserRole.ADMIN)
+  @Roles(UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async approve(
     @Param('id', ParseUUIDPipe) id: string,
