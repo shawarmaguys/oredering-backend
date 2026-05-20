@@ -91,4 +91,45 @@ export class VendorsService {
       },
     });
   }
+
+  async createDepartment(dto: { code: string; fullName: string; slackChannel?: string }) {
+    return this.prisma.department.create({
+      data: {
+        code: dto.code,
+        fullName: dto.fullName,
+        slackChannel: dto.slackChannel,
+      },
+    });
+  }
+
+  async updateDepartment(id: string, dto: { code?: string; fullName?: string; slackChannel?: string }) {
+    const department = await this.prisma.department.findUnique({
+      where: { id },
+    });
+    if (!department) {
+      throw new NotFoundException(`Department with ID "${id}" not found`);
+    }
+
+    return this.prisma.department.update({
+      where: { id },
+      data: {
+        code: dto.code,
+        fullName: dto.fullName,
+        slackChannel: dto.slackChannel,
+      },
+    });
+  }
+
+  async deleteDepartment(id: string) {
+    const department = await this.prisma.department.findUnique({
+      where: { id },
+    });
+    if (!department) {
+      throw new NotFoundException(`Department with ID "${id}" not found`);
+    }
+
+    return this.prisma.department.delete({
+      where: { id },
+    });
+  }
 }

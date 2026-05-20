@@ -55,5 +55,28 @@ export class LocationsController {
   ) {
     return this.locationsService.removeLocationItem(id, itemId);
   }
+
+  @Get(':id/departments')
+  async getLocationDepartments(@Param('id') id: string) {
+    return this.locationsService.getLocationDepartments(id);
+  }
+
+  @Post(':id/departments')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_MANAGER, UserRole.MANAGER)
+  async addOrUpdateLocationDepartment(
+    @Param('id') id: string,
+    @Body() dto: { departmentId: string },
+  ) {
+    return this.locationsService.addOrUpdateLocationDepartment(id, dto);
+  }
+
+  @Delete(':id/departments/:departmentId')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_MANAGER, UserRole.MANAGER)
+  async removeLocationDepartment(
+    @Param('id') id: string,
+    @Param('departmentId') departmentId: string,
+  ) {
+    return this.locationsService.removeLocationDepartment(id, departmentId);
+  }
 }
 

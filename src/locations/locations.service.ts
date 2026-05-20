@@ -175,4 +175,98 @@ export class LocationsService {
       },
     });
   }
+
+  async getLocationDepartments(locationId: string) {
+    // Verify location
+    const location = await this.prisma.location.findUnique({
+      where: { id: locationId },
+    });
+    if (!location) {
+      throw new NotFoundException(`Location with ID ${locationId} not found`);
+    }
+
+    // Fetch all departments
+    const departments = await this.prisma.department.findMany({
+      orderBy: { fullName: 'asc' },
+    });
+
+    // Fetch current locationDepartments
+    const locationDepartments = await this.prisma.locationDepartment.findMany({
+      where: { locationId },
+    });
+
+    const activeDeptIds = new Set(locationDepartments.map((ld) => ld.departmentId));
+
+    return departments.map((dept) => ({
+      id: dept.id,
+      code: dept.code,
+      fullName: dept.fullName,
+      slackChannel: dept.slackChannel,
+      assigned: activeDeptIds.has(dept.id),
+    }));
+  }
+
+  async addOrUpdateLocationDepartment(locationId: string, dto: { departmentId: string }) {
+    const { departmentId } = dto;
+
+    // Verify location
+    const location = await this.prisma.location.findUnique({
+      where: { id: locationId },
+    });
+    if (!location) {
+      throw new NotFoundException(`Location with ID ${locationId} not found`);
+    }
+
+    // Verify department
+    const department = await this.prisma.department.findUnique({
+      where: { id: departmentId },
+    });
+    if (!department) {
+      throw new NotFoundException(`Department with ID ${departmentId} not found`);
+    }
+
+    const existing = await this.prisma.locationDepartment.findUnique({
+      where: {
+        locationId_departmentId: {
+          locationId,
+          departmentId,
+        },
+      },
+    });
+
+    if (existing) {
+      return existing;
+    }
+
+    return this.prisma.locationDepartment.create({
+      data: {
+        locationId,
+        departmentId,
+      },
+    });
+  }
+
+  async removeLocationDepartment(locationId: string, departmentId: string) {
+    const existing = await this.prisma.locationDepartment.findUnique({
+      where: {
+        locationId_departmentId: {
+          locationId,
+          departmentId,
+        },
+      },
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`Location department mapping not found`);
+    }
+
+    return this.prisma.locationDepartment.delete({
+      where: {
+        locationId_departmentId: {
+          locationId,
+          departmentId,
+        },
+      },
+    });
+  }
 }

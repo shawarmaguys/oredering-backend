@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Body,
   Query,
@@ -38,6 +39,28 @@ export class VendorsController {
   @Get('departments')
   async findAllDepartments() {
     return this.vendorsService.findAllDepartments();
+  }
+
+  @Post('departments')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_MANAGER)
+  @HttpCode(HttpStatus.CREATED)
+  async createDepartment(@Body() dto: { code: string; fullName: string; slackChannel?: string }) {
+    return this.vendorsService.createDepartment(dto);
+  }
+
+  @Patch('departments/:id')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_MANAGER)
+  async updateDepartment(
+    @Param('id') id: string,
+    @Body() dto: { code?: string; fullName?: string; slackChannel?: string },
+  ) {
+    return this.vendorsService.updateDepartment(id, dto);
+  }
+
+  @Delete('departments/:id')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_MANAGER)
+  async deleteDepartment(@Param('id') id: string) {
+    return this.vendorsService.deleteDepartment(id);
   }
 
   @Patch(':id')
