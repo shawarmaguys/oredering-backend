@@ -2,6 +2,8 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateStockRecordDto } from './dto/create-stock-record.dto';
 import { CompleteStockRecordDto } from './dto/complete-stock-record.dto';
+import { decryptToken } from '../common/utils/crypto.util';
+import { generateStockRecordPdf } from '../common/utils/pdf.util';
 
 @Injectable()
 export class StockRecordsService {
@@ -154,7 +156,7 @@ export class StockRecordsService {
       throw new BadRequestException('Stock record must contain at least one item');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const completedRecord = await this.prisma.$transaction(async (tx) => {
       // 1. Delete existing placeholder items
       await tx.stockRecordItem.deleteMany({
         where: { stockRecordId: id },
@@ -190,18 +192,13 @@ export class StockRecordsService {
       }
 
       // 4. Update Stock Record to complete
-      await tx.stockRecord.update({
+      return tx.stockRecord.update({
         where: { id },
         data: {
           isCompleted: true,
           submittedBy: userId,
           submittedAt: new Date(),
         },
-      });
-
-      // Fetch completed record
-      return tx.stockRecord.findUnique({
-        where: { id },
         include: {
           items: {
             include: {
@@ -215,5 +212,181 @@ export class StockRecordsService {
         },
       });
     });
+
+    // 5. Generate and send PDF to the Slack channel corresponding to the department
+    try {
+      const fullRecord = await this.prisma.stockRecord.findUnique({
+        where: { id },
+        include: {
+          items: {
+            include: {
+              item: {
+                include: {
+                  vendor: {
+                    include: {
+                      department: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          submitter: {
+            select: { id: true, fullName: true, email: true, role: true },
+          },
+          location: true,
+        },
+      });
+
+      if (fullRecord) {
+        const firstItem = fullRecord.items?.[0]?.item;
+        const vendor = firstItem?.vendor;
+        const department = vendor?.department;
+        const vendorName = vendor?.displayName || 'Unknown Vendor';
+
+        const botToken = decryptToken(fullRecord.location?.slackBotToken);
+        const slackChannel = department?.slackChannel;
+
+        if (botToken && slackChannel) {
+          const resolvedChannelId = await resolveChannelId(botToken, slackChannel);
+
+          const pdfBuffer = await generateStockRecordPdf({
+            ...fullRecord,
+            vendorName,
+          });
+
+          const safeLocationName = fullRecord.location.name.replace(/[^a-zA-Z0-9]/g, '_');
+          const fileName = `StockAudit_${safeLocationName}_${new Date().toISOString().split('T')[0]}.pdf`;
+          const message = `📄 *Stock Count Audit Submitted*\n` +
+            `• *Location:* ${fullRecord.location.name}\n` +
+            `• *Vendor:* ${vendorName}\n` +
+            `• *Department:* ${department?.fullName || 'N/A'}\n` +
+            `• *Submitted By:* ${fullRecord.submitter?.fullName || 'System'}\n` +
+            `• *Date:* ${new Date(fullRecord.submittedAt).toLocaleString()}\n\n` +
+            `Please find the detailed PDF report attached below.`;
+
+          // Step 1: Get upload URL and file ID
+          const urlEncodedBody = new URLSearchParams();
+          urlEncodedBody.append('filename', fileName);
+          urlEncodedBody.append('length', pdfBuffer.length.toString());
+
+          const getUrlResponse = await fetch('https://slack.com/api/files.getUploadURLExternal', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${botToken}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: urlEncodedBody.toString(),
+          });
+
+          const getUrlResult: any = await getUrlResponse.json();
+          if (getUrlResult.ok) {
+            const { upload_url, file_id } = getUrlResult;
+
+            // Step 2: Upload file contents directly (raw binary body)
+            const uploadFileResponse = await fetch(upload_url, {
+              method: 'POST',
+              body: new Uint8Array(pdfBuffer),
+            });
+
+            if (uploadFileResponse.ok) {
+              // Step 3: Complete the file upload and share with the channel
+              const completeResponse = await fetch('https://slack.com/api/files.completeUploadExternal', {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${botToken}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  files: [{ id: file_id, title: fileName }],
+                  channel_id: resolvedChannelId,
+                  initial_comment: message,
+                }),
+              });
+
+              const completeResult: any = await completeResponse.json();
+              if (completeResult.ok) {
+                const fileObj = completeResult.files?.[0];
+                const shares = fileObj?.shares;
+                const publicShares = shares?.public || {};
+                const privateShares = shares?.private || {};
+
+                const publicTs = Object.values(publicShares)?.[0]?.[0]?.share_message_ts;
+                const privateTs = Object.values(privateShares)?.[0]?.[0]?.share_message_ts;
+
+                const responseSlackMessageTs = completeResult.message?.ts || publicTs || privateTs || null;
+
+                if (responseSlackMessageTs) {
+                  await this.prisma.stockRecord.update({
+                    where: { id },
+                    data: { responseSlackMessageTs },
+                  });
+                  completedRecord.responseSlackMessageTs = responseSlackMessageTs;
+                }
+              } else {
+                console.error('[Slack] completeUploadExternal failed:', completeResult.error);
+              }
+            } else {
+              console.error('[Slack] External binary upload failed with status:', uploadFileResponse.status);
+            }
+          } else {
+            console.error('[Slack] getUploadURLExternal failed:', getUrlResult.error);
+          }
+        }
+      }
+    } catch (slackErr) {
+      console.error('[Slack] Error in PDF generation/upload:', slackErr);
+    }
+
+    return completedRecord;
   }
+}
+
+async function resolveChannelId(botToken: string, channelNameOrId: string): Promise<string> {
+  const cleanName = channelNameOrId.replace(/^#/, '').trim();
+
+  // If it already looks like a Channel ID (e.g., starts with C, G, D), return it directly
+  if (/^[CGD][A-Z0-9]{8,}$/i.test(cleanName)) {
+    return cleanName;
+  }
+
+  try {
+    let cursor: string | undefined = undefined;
+    do {
+      const url = new URL('https://slack.com/api/conversations.list');
+      url.searchParams.append('types', 'public_channel,private_channel');
+      url.searchParams.append('limit', '200');
+      if (cursor) {
+        url.searchParams.append('cursor', cursor);
+      }
+
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${botToken}`,
+        },
+      });
+
+      const result: any = await response.json();
+      if (!result.ok) {
+        console.error('[Slack] conversations.list failed:', result.error);
+        break;
+      }
+
+      const channels = result.channels || [];
+      const found = channels.find(
+        (c: any) => c.name.toLowerCase() === cleanName.toLowerCase()
+      );
+      if (found) {
+        return found.id;
+      }
+
+      cursor = result.response_metadata?.next_cursor;
+    } while (cursor);
+  } catch (err) {
+    console.error('[Slack] Error in resolveChannelId:', err);
+  }
+
+  // Fallback to the original value if not found
+  return channelNameOrId;
 }

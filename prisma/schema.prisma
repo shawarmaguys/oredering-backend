@@ -199,6 +199,7 @@ model StockRecord {
   locationId     String    @map("location_id") @db.Uuid
   submittedBy    String?   @map("submitted_by") @db.Uuid
   slackMessageTs String?   @map("slack_message_ts")
+  responseSlackMessageTs String?   @map("response_slack_message_ts")
   submittedAt    DateTime  @default(now()) @map("submitted_at")
   approvedAt     DateTime? @map("approved_at")
   isCompleted    Boolean   @default(true) @map("is_completed")
