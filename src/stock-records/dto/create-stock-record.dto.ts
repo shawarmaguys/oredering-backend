@@ -8,11 +8,11 @@ export class StockRecordItemDto {
 
   @IsNumber()
   @Min(0)
-  enteredQuantity: number;
+  basicQuantity: number;
 
-  @IsString()
-  @IsNotEmpty()
-  enteredUnit: string;
+  @IsNumber()
+  @Min(0)
+  secondaryQuantity: number;
 }
 
 export class CreateStockRecordDto {

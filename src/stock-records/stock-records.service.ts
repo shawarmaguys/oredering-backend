@@ -50,18 +50,12 @@ export class StockRecordsService {
           throw new NotFoundException(`Item with ID ${itemDto.itemId} not found`);
         }
 
-        // Calculate normalized quantity based on multiplier
-        // enteredQuantity * multiplier
-        const multiplier = Number(dbItem.multiplier) || 1;
-        const normalizedQuantity = itemDto.enteredQuantity * multiplier;
-
         await tx.stockRecordItem.create({
           data: {
             stockRecordId: stockRecord.id,
             itemId: itemDto.itemId,
-            enteredQuantity: itemDto.enteredQuantity,
-            enteredUnit: itemDto.enteredUnit,
-            normalizedQuantity: normalizedQuantity,
+            basicQuantity: itemDto.basicQuantity,
+            secondaryQuantity: itemDto.secondaryQuantity,
           },
         });
       }
@@ -177,16 +171,12 @@ export class StockRecordsService {
           throw new NotFoundException(`Item with ID ${itemDto.itemId} not found`);
         }
 
-        const multiplier = Number(dbItem.multiplier) || 1;
-        const normalizedQuantity = itemDto.enteredQuantity * multiplier;
-
         await tx.stockRecordItem.create({
           data: {
             stockRecordId: id,
             itemId: itemDto.itemId,
-            enteredQuantity: itemDto.enteredQuantity,
-            enteredUnit: itemDto.enteredUnit,
-            normalizedQuantity: normalizedQuantity,
+            basicQuantity: itemDto.basicQuantity,
+            secondaryQuantity: itemDto.secondaryQuantity,
           },
         });
       }

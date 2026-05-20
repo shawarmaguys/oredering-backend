@@ -140,9 +140,8 @@ export class SchedulesService implements OnModuleInit {
           data: {
             stockRecordId: stockRecord.id,
             itemId: locItem.itemId,
-            enteredQuantity: 0,
-            enteredUnit: locItem.item.baseUnitName || 'pcs',
-            normalizedQuantity: 0,
+            basicQuantity: 0,
+            secondaryQuantity: 0,
           },
         });
       }

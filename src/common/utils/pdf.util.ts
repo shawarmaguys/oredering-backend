@@ -80,9 +80,8 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
       // Table Column Titles
       doc.fillColor(textColor).font('Helvetica-Bold').fontSize(9);
       doc.text('Product Code', 60, y + 7, { width: 90 });
-      doc.text('Item Name', 160, y + 7, { width: 180 });
-      doc.text('Entered Quantity', 350, y + 7, { width: 100, align: 'right' });
-      doc.text('Normalized Quantity', 460, y + 7, { width: 100, align: 'right' });
+      doc.text('Item Name', 160, y + 7, { width: 220 });
+      doc.text('Counted Quantity', 390, y + 7, { width: 160, align: 'right' });
 
       y += 24;
 
@@ -105,9 +104,8 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
           
           doc.fillColor(textColor).font('Helvetica-Bold').fontSize(9);
           doc.text('Product Code', 60, y + 7, { width: 90 });
-          doc.text('Item Name', 160, y + 7, { width: 180 });
-          doc.text('Entered Quantity', 350, y + 7, { width: 100, align: 'right' });
-          doc.text('Normalized Quantity', 460, y + 7, { width: 100, align: 'right' });
+          doc.text('Item Name', 160, y + 7, { width: 220 });
+          doc.text('Counted Quantity', 390, y + 7, { width: 160, align: 'right' });
           
           y += 24;
           doc.font('Helvetica').fontSize(9);
@@ -116,8 +114,17 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
         const item = recordItem.item || {};
         const code = item.productCode || 'N/A';
         const name = item.displayName || 'Unknown Item';
-        const enteredQty = `${Number(recordItem.enteredQuantity).toFixed(2)} ${recordItem.enteredUnit}`;
-        const normalizedQty = `${Number(recordItem.normalizedQuantity).toFixed(2)} ${item.baseUnitName || 'pcs'}`;
+
+        const displayUnit = item.displayUnitName || 'pcs';
+        const baseUnit = item.baseUnitName || displayUnit;
+        const isSameUnit = baseUnit.toLowerCase() === displayUnit.toLowerCase() || Number(item.multiplier) === 1;
+
+        let countedQty = '';
+        if (isSameUnit) {
+          countedQty = `${Number(recordItem.secondaryQuantity || 0).toFixed(2)} ${displayUnit}`;
+        } else {
+          countedQty = `${Number(recordItem.secondaryQuantity || 0).toFixed(0)} ${displayUnit} + ${Number(recordItem.basicQuantity || 0).toFixed(2)} ${baseUnit}`;
+        }
 
         // Row background shading for readability
         if (isAltRow) {
@@ -126,9 +133,8 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
         
         doc.fillColor(textColor);
         doc.text(code, 60, y + 6, { width: 90 });
-        doc.text(name, 160, y + 6, { width: 180 });
-        doc.text(enteredQty, 350, y + 6, { width: 100, align: 'right' });
-        doc.text(normalizedQty, 460, y + 6, { width: 100, align: 'right' });
+        doc.text(name, 160, y + 6, { width: 220 });
+        doc.text(countedQty, 390, y + 6, { width: 160, align: 'right' });
 
         // Draw row bottom border line
         doc.moveTo(50, y + 22)
