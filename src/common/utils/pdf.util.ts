@@ -90,8 +90,15 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
       let isAltRow = false;
 
       for (const recordItem of record.items || []) {
+        const item = recordItem.item || {};
+        const displayUnit = item.displayUnitName || 'pcs';
+        const baseUnit = item.baseUnitName || displayUnit;
+        const isSameUnit = baseUnit.toLowerCase() === displayUnit.toLowerCase() || Number(item.multiplier) === 1;
+
+        const rowHeight = isSameUnit ? 24 : 36;
+
         // Page breaking logic
-        if (y > doc.page.height - 80) {
+        if (y + rowHeight > doc.page.height - 60) {
           doc.addPage();
           // Header Bar Decoration on next page
           doc.rect(0, 0, doc.page.width, 15).fill(primaryColor);
@@ -111,21 +118,19 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
           doc.font('Helvetica').fontSize(9);
         }
 
-        const item = recordItem.item || {};
         const code = item.productCode || 'N/A';
         const name = item.displayName || 'Unknown Item';
-
-        const displayUnit = item.displayUnitName || 'pcs';
-        const baseUnit = item.baseUnitName || displayUnit;
-        const isSameUnit = baseUnit.toLowerCase() === displayUnit.toLowerCase() || Number(item.multiplier) === 1;
 
         const backSec = Number(recordItem.secondaryQuantity || 0);
         const backBasic = Number(recordItem.basicQuantity || 0);
         const frontSec = Number(recordItem.frontSecondaryQuantity || 0);
         const frontBasic = Number(recordItem.frontBasicQuantity || 0);
 
-        const totalSec = backSec + frontSec;
-        const totalBasic = backBasic + frontBasic;
+        const multiplier = Number(item.multiplier) || 1;
+        const totalBasicUnits = (backSec * multiplier + backBasic) + (frontSec * multiplier + frontBasic);
+
+        const totalSec = Math.floor(totalBasicUnits / multiplier);
+        const totalBasic = totalBasicUnits - (totalSec * multiplier);
 
         let countedQty = '';
         if (isSameUnit) {
@@ -136,7 +141,7 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
 
         // Row background shading for readability
         if (isAltRow) {
-          doc.rect(50, y, doc.page.width - 100, 22).fill('#fafafa');
+          doc.rect(50, y, doc.page.width - 100, rowHeight).fill('#fafafa');
         }
         
         doc.fillColor(textColor);
@@ -145,13 +150,13 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
         doc.text(countedQty, 390, y + 6, { width: 160, align: 'right' });
 
         // Draw row bottom border line
-        doc.moveTo(50, y + 22)
-          .lineTo(doc.page.width - 50, y + 22)
+        doc.moveTo(50, y + rowHeight)
+          .lineTo(doc.page.width - 50, y + rowHeight)
           .strokeColor(borderGray)
           .lineWidth(0.5)
           .stroke();
 
-        y += 22;
+        y += rowHeight;
         isAltRow = !isAltRow;
       }
 
