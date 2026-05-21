@@ -214,12 +214,14 @@ model StockRecord {
 }
 
 model StockRecordItem {
-  id                String   @id @default(uuid()) @db.Uuid
-  stockRecordId     String   @map("stock_record_id") @db.Uuid
-  itemId            String   @map("item_id") @db.Uuid
-  basicQuantity     Decimal  @default(0) @map("basic_quantity") @db.Decimal(10, 4)
-  secondaryQuantity Decimal  @default(0) @map("secondary_quantity") @db.Decimal(10, 4)
-  createdAt         DateTime @default(now()) @map("created_at")
+  id                    String   @id @default(uuid()) @db.Uuid
+  stockRecordId         String   @map("stock_record_id") @db.Uuid
+  itemId                String   @map("item_id") @db.Uuid
+  basicQuantity         Decimal  @default(0) @map("basic_quantity") @db.Decimal(10, 4)
+  secondaryQuantity     Decimal  @default(0) @map("secondary_quantity") @db.Decimal(10, 4)
+  frontBasicQuantity    Decimal  @default(0) @map("front_basic_quantity") @db.Decimal(10, 4)
+  frontSecondaryQuantity Decimal @default(0) @map("front_secondary_quantity") @db.Decimal(10, 4)
+  createdAt             DateTime @default(now()) @map("created_at")
 
   // Relations
   stockRecord StockRecord @relation(fields: [stockRecordId], references: [id], onDelete: Cascade)

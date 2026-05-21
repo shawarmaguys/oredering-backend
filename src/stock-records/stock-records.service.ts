@@ -54,8 +54,10 @@ export class StockRecordsService {
           data: {
             stockRecordId: stockRecord.id,
             itemId: itemDto.itemId,
-            basicQuantity: itemDto.basicQuantity,
-            secondaryQuantity: itemDto.secondaryQuantity,
+            basicQuantity: itemDto.basicQuantity || 0,
+            secondaryQuantity: itemDto.secondaryQuantity || 0,
+            frontBasicQuantity: itemDto.frontBasicQuantity || 0,
+            frontSecondaryQuantity: itemDto.frontSecondaryQuantity || 0,
           },
         });
       }
@@ -186,8 +188,10 @@ export class StockRecordsService {
           data: {
             stockRecordId: id,
             itemId: itemDto.itemId,
-            basicQuantity: itemDto.basicQuantity,
-            secondaryQuantity: itemDto.secondaryQuantity,
+            basicQuantity: itemDto.basicQuantity || 0,
+            secondaryQuantity: itemDto.secondaryQuantity || 0,
+            frontBasicQuantity: itemDto.frontBasicQuantity || 0,
+            frontSecondaryQuantity: itemDto.frontSecondaryQuantity || 0,
           },
         });
       }
@@ -283,7 +287,12 @@ export class StockRecordsService {
 
               const basicQty = Number(ri.basicQuantity) || 0;
               const secondaryQty = Number(ri.secondaryQuantity) || 0;
-              const countedQty = secondaryQty + (basicQty / multiplier);
+              const frontBasicQty = Number(ri.frontBasicQuantity) || 0;
+              const frontSecondaryQty = Number(ri.frontSecondaryQuantity) || 0;
+
+              const totalBasic = basicQty + frontBasicQty;
+              const totalSec = secondaryQty + frontSecondaryQty;
+              const countedQty = totalSec + (totalBasic / multiplier);
 
               const roundedNormalized = Math.round(countedQty);
               const roundedPar = Math.round(parLevel);
@@ -293,8 +302,8 @@ export class StockRecordsService {
                 itemId: ri.itemId,
                 quantity: suggestedQty,
                 unitName: item.displayUnitName || 'pcs',
-                basicQuantity: basicQty,
-                secondaryQuantity: secondaryQty,
+                basicQuantity: totalBasic,
+                secondaryQuantity: totalSec,
                 normalizedQuantity: roundedNormalized,
                 parLevel: roundedPar,
                 suggestedQuantity: suggestedQty,

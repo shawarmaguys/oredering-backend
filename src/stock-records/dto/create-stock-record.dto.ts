@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsUUID, IsArray, ValidateNested, IsNumber, IsString, Min } from 'class-validator';
+import { IsNotEmpty, IsUUID, IsArray, ValidateNested, IsNumber, IsOptional, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class StockRecordItemDto {
@@ -8,11 +8,23 @@ export class StockRecordItemDto {
 
   @IsNumber()
   @Min(0)
-  basicQuantity: number;
+  @IsOptional()
+  basicQuantity?: number;
 
   @IsNumber()
   @Min(0)
-  secondaryQuantity: number;
+  @IsOptional()
+  secondaryQuantity?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  frontBasicQuantity?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  frontSecondaryQuantity?: number;
 }
 
 export class CreateStockRecordDto {

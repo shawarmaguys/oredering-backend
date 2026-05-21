@@ -119,11 +119,19 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
         const baseUnit = item.baseUnitName || displayUnit;
         const isSameUnit = baseUnit.toLowerCase() === displayUnit.toLowerCase() || Number(item.multiplier) === 1;
 
+        const backSec = Number(recordItem.secondaryQuantity || 0);
+        const backBasic = Number(recordItem.basicQuantity || 0);
+        const frontSec = Number(recordItem.frontSecondaryQuantity || 0);
+        const frontBasic = Number(recordItem.frontBasicQuantity || 0);
+
+        const totalSec = backSec + frontSec;
+        const totalBasic = backBasic + frontBasic;
+
         let countedQty = '';
         if (isSameUnit) {
-          countedQty = `${Number(recordItem.secondaryQuantity || 0).toFixed(2)} ${displayUnit}`;
+          countedQty = `${totalSec.toFixed(0)} ${displayUnit} (B: ${backSec.toFixed(0)} | F: ${frontSec.toFixed(0)})`;
         } else {
-          countedQty = `${Number(recordItem.secondaryQuantity || 0).toFixed(0)} ${displayUnit} + ${Number(recordItem.basicQuantity || 0).toFixed(2)} ${baseUnit}`;
+          countedQty = `${totalSec.toFixed(0)} ${displayUnit} + ${totalBasic.toFixed(1)} ${baseUnit}\n(B: ${backSec.toFixed(0)}+${backBasic.toFixed(1)} | F: ${frontSec.toFixed(0)}+${frontBasic.toFixed(1)})`;
         }
 
         // Row background shading for readability
