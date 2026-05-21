@@ -360,72 +360,143 @@ export class StockRecordsService {
 
           message += `Please find the detailed PDF report attached below.`;
 
-          // Step 1: Get upload URL and file ID
-          const urlEncodedBody = new URLSearchParams();
-          urlEncodedBody.append('filename', fileName);
-          urlEncodedBody.append('length', pdfBuffer.length.toString());
-
-          const getUrlResponse = await fetch('https://slack.com/api/files.getUploadURLExternal', {
+          // Send the message text first to get the ts
+          const postMsgResponse = await fetch('https://slack.com/api/chat.postMessage', {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${botToken}`,
-              'Content-Type': 'application/x-www-form-urlencoded',
+              'Content-Type': 'application/json',
             },
-            body: urlEncodedBody.toString(),
+            body: JSON.stringify({
+              channel: resolvedChannelId,
+              text: message,
+            }),
           });
 
-          const getUrlResult: any = await getUrlResponse.json();
-          if (getUrlResult.ok) {
-            const { upload_url, file_id } = getUrlResult;
+          const postMsgResult: any = await postMsgResponse.json();
+          if (postMsgResult.ok && postMsgResult.ts) {
+            const responseSlackMessageTs = postMsgResult.ts;
 
-            // Step 2: Upload file contents directly (raw binary body)
-            const uploadFileResponse = await fetch(upload_url, {
+            // Save ts to database
+            await this.prisma.stockRecord.update({
+              where: { id },
+              data: { responseSlackMessageTs },
+            });
+            completedRecord.responseSlackMessageTs = responseSlackMessageTs;
+
+            // Step 1: Get upload URL and file ID
+            const urlEncodedBody = new URLSearchParams();
+            urlEncodedBody.append('filename', fileName);
+            urlEncodedBody.append('length', pdfBuffer.length.toString());
+
+            const getUrlResponse = await fetch('https://slack.com/api/files.getUploadURLExternal', {
               method: 'POST',
-              body: new Uint8Array(pdfBuffer),
+              headers: {
+                Authorization: `Bearer ${botToken}`,
+                'Content-Type': 'application/x-www-form-urlencoded',
+              },
+              body: urlEncodedBody.toString(),
             });
 
-            if (uploadFileResponse.ok) {
-              // Step 3: Complete the file upload and share with the channel
-              const completeResponse = await fetch('https://slack.com/api/files.completeUploadExternal', {
+            const getUrlResult: any = await getUrlResponse.json();
+            if (getUrlResult.ok) {
+              const { upload_url, file_id } = getUrlResult;
+
+              // Step 2: Upload file contents directly (raw binary body)
+              const uploadFileResponse = await fetch(upload_url, {
+                method: 'POST',
+                body: new Uint8Array(pdfBuffer),
+              });
+
+              if (uploadFileResponse.ok) {
+                // Step 3: Complete the file upload and share with the thread
+                const completeResponse = await fetch('https://slack.com/api/files.completeUploadExternal', {
+                  method: 'POST',
+                  headers: {
+                    Authorization: `Bearer ${botToken}`,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    files: [{ id: file_id, title: fileName }],
+                    channel_id: resolvedChannelId,
+                    thread_ts: responseSlackMessageTs,
+                  }),
+                });
+
+                const completeResult: any = await completeResponse.json();
+                if (!completeResult.ok) {
+                  console.error('[Slack] completeUploadExternal failed:', completeResult.error);
+                }
+              } else {
+                console.error('[Slack] External binary upload failed with status:', uploadFileResponse.status);
+              }
+            } else {
+              console.error('[Slack] getUploadURLExternal failed:', getUrlResult.error);
+            }
+          } else {
+            console.error('[Slack] chat.postMessage failed:', postMsgResult.error);
+          }
+
+          // In addition, if this stock record was triggered by a schedule and has a slackMessageTs, send the PDF as a threaded reply to the trigger message.
+          const vendorChannel = vendor?.channelName;
+          if (fullRecord.slackMessageTs && vendorChannel) {
+            try {
+              const resolvedVendorChannelId = await resolveChannelId(botToken, vendorChannel);
+              const triggerReplyMessage = `✅ *Stock Count Completed & Submitted*\n` +
+                `• *Submitted By:* ${fullRecord.submitter?.fullName || 'System'}\n` +
+                `• *Date:* ${new Date(fullRecord.submittedAt).toLocaleString()}\n\n` +
+                `The detailed stock count audit report has been attached to this thread.`;
+
+              // Step 1: Get upload URL and file ID for the reply
+              const urlEncodedBodyReply = new URLSearchParams();
+              urlEncodedBodyReply.append('filename', fileName);
+              urlEncodedBodyReply.append('length', pdfBuffer.length.toString());
+
+              const getUrlResponseReply = await fetch('https://slack.com/api/files.getUploadURLExternal', {
                 method: 'POST',
                 headers: {
                   Authorization: `Bearer ${botToken}`,
-                  'Content-Type': 'application/json',
+                  'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: JSON.stringify({
-                  files: [{ id: file_id, title: fileName }],
-                  channel_id: resolvedChannelId,
-                  initial_comment: message,
-                }),
+                body: urlEncodedBodyReply.toString(),
               });
 
-              const completeResult: any = await completeResponse.json();
-              if (completeResult.ok) {
-                const fileObj = completeResult.files?.[0];
-                const shares = fileObj?.shares;
-                const publicShares = shares?.public || {};
-                const privateShares = shares?.private || {};
+              const getUrlResultReply: any = await getUrlResponseReply.json();
+              if (getUrlResultReply.ok) {
+                const { upload_url: uploadUrlReply, file_id: fileIdReply } = getUrlResultReply;
 
-                const publicTs = Object.values(publicShares)?.[0]?.[0]?.share_message_ts;
-                const privateTs = Object.values(privateShares)?.[0]?.[0]?.share_message_ts;
+                const uploadFileResponseReply = await fetch(uploadUrlReply, {
+                  method: 'POST',
+                  body: new Uint8Array(pdfBuffer),
+                });
 
-                const responseSlackMessageTs = completeResult.message?.ts || publicTs || privateTs || null;
-
-                if (responseSlackMessageTs) {
-                  await this.prisma.stockRecord.update({
-                    where: { id },
-                    data: { responseSlackMessageTs },
+                if (uploadFileResponseReply.ok) {
+                  const completeResponseReply = await fetch('https://slack.com/api/files.completeUploadExternal', {
+                    method: 'POST',
+                    headers: {
+                      Authorization: `Bearer ${botToken}`,
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      files: [{ id: fileIdReply, title: fileName }],
+                      channel_id: resolvedVendorChannelId,
+                      thread_ts: fullRecord.slackMessageTs,
+                      initial_comment: triggerReplyMessage,
+                    }),
                   });
-                  completedRecord.responseSlackMessageTs = responseSlackMessageTs;
+                  const completeResultReply: any = await completeResponseReply.json();
+                  if (!completeResultReply.ok) {
+                    console.error('[Slack] completeUploadExternal for trigger reply failed:', completeResultReply.error);
+                  }
+                } else {
+                  console.error('[Slack] Binary upload for trigger reply failed with status:', uploadFileResponseReply.status);
                 }
               } else {
-                console.error('[Slack] completeUploadExternal failed:', completeResult.error);
+                console.error('[Slack] getUploadURLExternal for trigger reply failed:', getUrlResultReply.error);
               }
-            } else {
-              console.error('[Slack] External binary upload failed with status:', uploadFileResponse.status);
+            } catch (err) {
+              console.error('[Slack] Error sending trigger notification reply:', err);
             }
-          } else {
-            console.error('[Slack] getUploadURLExternal failed:', getUrlResult.error);
           }
         }
       }

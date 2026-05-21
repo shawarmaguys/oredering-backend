@@ -5,6 +5,7 @@ import { UpdatePurchaseOrderDto } from './dto/update-purchase-order.dto';
 import { SendPurchaseOrderDto } from './dto/send-purchase-order.dto';
 import { PurchaseOrderStatus } from '@prisma/client';
 import { generatePurchaseOrderPdf } from '../common/utils/pdf.util';
+import { decryptToken } from '../common/utils/crypto.util';
 
 @Injectable()
 export class PurchaseOrdersService {
@@ -168,7 +169,7 @@ export class PurchaseOrdersService {
       throw new BadRequestException(`Purchase order is already ${po.status}`);
     }
 
-    return this.prisma.purchaseOrder.update({
+    const updatedPo = await this.prisma.purchaseOrder.update({
       where: { id },
       data: {
         status: PurchaseOrderStatus.GENERATED,
@@ -181,8 +182,13 @@ export class PurchaseOrdersService {
             item: true,
           },
         },
-        vendor: true,
+        vendor: {
+          include: {
+            department: true,
+          },
+        },
         location: true,
+        stockRecord: true,
         creator: {
           select: { id: true, fullName: true, email: true, role: true },
         },
@@ -191,6 +197,37 @@ export class PurchaseOrdersService {
         },
       },
     });
+
+    // Post Slack Thread Reply if there's an associated stock record
+    const botToken = decryptToken(updatedPo.location?.slackBotToken);
+    const stockRecord = updatedPo.stockRecord;
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (botToken && stockRecord) {
+      const deptChannel = updatedPo.vendor?.department?.slackChannel;
+      if (stockRecord.responseSlackMessageTs && deptChannel) {
+        try {
+          const resolvedChannelId = await resolveChannelId(botToken, deptChannel);
+          const pdfBuffer = await generatePurchaseOrderPdf(updatedPo);
+          const safeLocationName = updatedPo.location.name.replace(/[^a-zA-Z0-9]/g, '_');
+          const fileName = `PurchaseOrder_${safeLocationName}_${new Date().toISOString().split('T')[0]}.pdf`;
+
+          const msg = `🛍️ *Purchase Order #${updatedPo.id.slice(0, 8)} Approved*\n` +
+            `• *Status:* APPROVED\n` +
+            `• *Approved By:* ${user?.fullName || 'System'}\n` +
+            `• *Date:* ${new Date().toLocaleString()}\n\n` +
+            `This purchase order has been approved. PDF attached.`;
+
+          await uploadPdfToSlackThread(botToken, resolvedChannelId, stockRecord.responseSlackMessageTs, pdfBuffer, fileName, msg);
+        } catch (err) {
+          console.error('[Slack] Failed to send approval reply to department message:', err);
+        }
+      }
+    }
+
+    return updatedPo;
   }
 
   async update(id: string, updatePurchaseOrderDto: UpdatePurchaseOrderDto) {
@@ -250,8 +287,13 @@ export class PurchaseOrdersService {
             item: true,
           },
         },
-        vendor: true,
+        vendor: {
+          include: {
+            department: true,
+          },
+        },
         location: true,
+        stockRecord: true,
         creator: {
           select: { id: true, fullName: true, email: true, role: true },
         },
@@ -351,10 +393,159 @@ export class PurchaseOrdersService {
         },
       });
 
+      // 6. Post Slack Thread Replies if there's an associated stock record
+      const botToken = decryptToken(po.location?.slackBotToken);
+      const stockRecord = po.stockRecord;
+
+      if (botToken && stockRecord) {
+        // Reply 1: To the trigger notification message (in vendor's channelName)
+        const vendorChannel = po.vendor?.channelName;
+        if (stockRecord.slackMessageTs && vendorChannel) {
+          try {
+            const resolvedChannelId = await resolveChannelId(botToken, vendorChannel);
+            const msg = `🛍️ *Purchase Order #${po.id.slice(0, 8)} Sent*\n` +
+              `• *Status:* SENT\n` +
+              `• *Sent By:* ${user?.fullName || 'System'}\n` +
+              `• *Date:* ${new Date().toLocaleString()}\n\n` +
+              `The official PDF Purchase Order sent to the supplier has been attached to this thread.`;
+
+            await uploadPdfToSlackThread(botToken, resolvedChannelId, stockRecord.slackMessageTs, pdfBuffer, fileName, msg);
+          } catch (err) {
+            console.error('[Slack] Failed to send reply to trigger message:', err);
+          }
+        }
+
+        // Reply 2: To the department review request message (in department's slackChannel)
+        const deptChannel = po.vendor?.department?.slackChannel;
+        if (stockRecord.responseSlackMessageTs && deptChannel) {
+          try {
+            const resolvedChannelId = await resolveChannelId(botToken, deptChannel);
+            const msg = `🛍️ *Purchase Order #${po.id.slice(0, 8)} Approved & Sent*\n` +
+              `• *Status:* SENT\n` +
+              `• *Sent By:* ${user?.fullName || 'System'}\n` +
+              `• *Date:* ${new Date().toLocaleString()}\n\n` +
+              `This purchase order has been finalized and sent to the supplier. PDF attached.`;
+
+            await uploadPdfToSlackThread(botToken, resolvedChannelId, stockRecord.responseSlackMessageTs, pdfBuffer, fileName, msg);
+          } catch (err) {
+            console.error('[Slack] Failed to send reply to department message:', err);
+          }
+        }
+      }
+
       return { success: true, message: 'Purchase Order sent successfully!', detail: responseText };
     } catch (error: any) {
       console.error('Failed to send PO email via Google Script:', error);
       throw new BadRequestException(`Failed to send email: ${error.message}`);
     }
   }
+}
+
+async function uploadPdfToSlackThread(
+  botToken: string,
+  channelId: string,
+  threadTs: string,
+  pdfBuffer: Buffer,
+  fileName: string,
+  message: string,
+): Promise<any> {
+  // Step 1: Get upload URL and file ID
+  const urlEncodedBody = new URLSearchParams();
+  urlEncodedBody.append('filename', fileName);
+  urlEncodedBody.append('length', pdfBuffer.length.toString());
+
+  const getUrlResponse = await fetch('https://slack.com/api/files.getUploadURLExternal', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${botToken}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: urlEncodedBody.toString(),
+  });
+
+  const getUrlResult: any = await getUrlResponse.json();
+  if (!getUrlResult.ok) {
+    throw new Error(`getUploadURLExternal failed: ${getUrlResult.error}`);
+  }
+
+  const { upload_url, file_id } = getUrlResult;
+
+  // Step 2: Upload file contents directly
+  const uploadFileResponse = await fetch(upload_url, {
+    method: 'POST',
+    body: new Uint8Array(pdfBuffer),
+  });
+
+  if (!uploadFileResponse.ok) {
+    throw new Error(`Binary upload failed with status: ${uploadFileResponse.status}`);
+  }
+
+  // Step 3: Complete the file upload and share with thread
+  const completeResponse = await fetch('https://slack.com/api/files.completeUploadExternal', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${botToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      files: [{ id: file_id, title: fileName }],
+      channel_id: channelId,
+      thread_ts: threadTs,
+      initial_comment: message,
+    }),
+  });
+
+  const completeResult: any = await completeResponse.json();
+  if (!completeResult.ok) {
+    throw new Error(`completeUploadExternal failed: ${completeResult.error}`);
+  }
+
+  return completeResult;
+}
+
+async function resolveChannelId(botToken: string, channelNameOrId: string): Promise<string> {
+  const cleanName = channelNameOrId.replace(/^#/, '').trim();
+
+  if (/^[CGD][A-Z0-9]{8,}$/i.test(cleanName)) {
+    return cleanName;
+  }
+
+  try {
+    let cursor: string | undefined = undefined;
+    do {
+      const url = new URL('https://slack.com/api/conversations.list');
+      url.searchParams.append('types', 'public_channel,private_channel');
+      url.searchParams.append('limit', '200');
+      if (cursor) {
+        url.searchParams.append('cursor', cursor);
+      }
+
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${botToken}`,
+        },
+      });
+
+      const result: any = await response.json();
+      if (!result.ok) {
+        console.error('[Slack] conversations.list failed:', result.error);
+        break;
+      }
+
+      const channels = result.channels || [];
+      const found = channels.find(
+        (c: any) => c.name.toLowerCase() === cleanName.toLowerCase()
+      );
+      if (found) {
+        return found.id;
+      }
+
+      cursor = result.response_metadata?.next_cursor;
+    } while (cursor);
+  } catch (err) {
+    console.error('[Slack] Error in resolveChannelId:', err);
+  }
+
+  return channelNameOrId;
 }
