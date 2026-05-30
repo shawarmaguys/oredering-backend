@@ -20,40 +20,37 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserRole } from '@prisma/client';
 
 @Controller('stock-records')
-@UseGuards(JwtAuthGuard, RolesGuard)
 export class StockRecordsController {
   constructor(private readonly stockRecordsService: StockRecordsService) {}
 
   @Post()
-  @Roles(UserRole.WORKER, UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
   @HttpCode(HttpStatus.CREATED)
   async create(
     @Body() createStockRecordDto: CreateStockRecordDto,
     @CurrentUser() user: any,
   ) {
-    return this.stockRecordsService.create(createStockRecordDto, user.id);
+    return this.stockRecordsService.create(createStockRecordDto, user?.id || null);
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.WORKER, UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
   async findAll(@CurrentUser() user: any) {
     return this.stockRecordsService.findAll(user);
   }
 
   @Get(':id')
-  @Roles(UserRole.WORKER, UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.stockRecordsService.findOne(id);
   }
 
   @Patch(':id/complete')
-  @Roles(UserRole.WORKER, UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   async complete(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() completeStockRecordDto: CompleteStockRecordDto,
     @CurrentUser() user: any,
   ) {
-    return this.stockRecordsService.complete(id, completeStockRecordDto, user.id);
+    return this.stockRecordsService.complete(id, completeStockRecordDto, user?.id || null);
   }
 }

@@ -9,7 +9,7 @@ import { generateStockRecordPdf } from '../common/utils/pdf.util';
 export class StockRecordsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createStockRecordDto: CreateStockRecordDto, userId: string) {
+  async create(createStockRecordDto: CreateStockRecordDto, userId: string | null) {
     const { locationId, items } = createStockRecordDto;
 
     // Check location
@@ -146,13 +146,22 @@ export class StockRecordsService {
     return record;
   }
 
-  async complete(id: string, completeDto: CompleteStockRecordDto, userId: string) {
+  async complete(id: string, completeDto: CompleteStockRecordDto, userId: string | null) {
     const record = await this.prisma.stockRecord.findUnique({
       where: { id },
     });
 
     if (!record) {
       throw new NotFoundException(`Stock record with ID ${id} not found`);
+    }
+
+    // Resolve effective user ID - fall back to admin when called unauthenticated
+    let effectiveUserId = userId;
+    if (!effectiveUserId) {
+      const fallbackUser =
+        (await this.prisma.user.findFirst({ where: { role: 'ADMIN' } })) ||
+        (await this.prisma.user.findFirst());
+      effectiveUserId = fallbackUser?.id ?? null;
     }
 
     // Removed the check that prevented editing an already completed record
@@ -316,7 +325,7 @@ export class StockRecordsService {
                 vendorId: vendor.id,
                 locationId: fullRecord.locationId,
                 stockRecordId: id,
-                createdBy: userId,
+                createdBy: effectiveUserId as string,
                 status: 'DRAFT',
                 notes: `Auto-drafted from Stock Audit Count #${id.slice(0, 8)}`,
                 items: {
