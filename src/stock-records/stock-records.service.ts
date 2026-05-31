@@ -219,65 +219,64 @@ export class StockRecordsService {
 
           let createdPoId: string | null = null;
 
-          // If a purchase order doesn't already exist for this stock record, draft one
+          // Draft or update purchase order
           if (vendor) {
             const existingPo = await this.prisma.purchaseOrder.findFirst({
               where: { stockRecordId: id },
             });
 
-            if (!existingPo) {
-              // Find all location items to get their parLevels
-              const locationItems = await this.prisma.locationItem.findMany({
-                where: {
-                  locationId: fullRecord.locationId,
-                  itemId: { in: fullRecord.items.map((ri) => ri.itemId) },
-                },
+            // Find all location items to get their parLevels
+            const locationItems = await this.prisma.locationItem.findMany({
+              where: {
+                locationId: fullRecord.locationId,
+                itemId: { in: fullRecord.items.map((ri) => ri.itemId) },
+              },
+            });
+            const parMap = new Map(locationItems.map((li) => [li.itemId, Number(li.parLevel) || 0]));
+
+            // Calculate PO items
+            const poItemsToCreate: Array<{
+              itemId: string;
+              quantity: number;
+              unitName: string;
+              basicQuantity: number;
+              secondaryQuantity: number;
+              normalizedQuantity: number;
+              parLevel: number;
+              suggestedQuantity: number;
+            }> = [];
+
+            for (const ri of fullRecord.items) {
+              const item = ri.item;
+              const parLevel = parMap.get(ri.itemId) || 0;
+              const multiplier = Number(item.multiplier) || 1;
+
+              const basicQty = Number(ri.basicQuantity) || 0;
+              const secondaryQty = Number(ri.secondaryQuantity) || 0;
+              const frontBasicQty = Number(ri.frontBasicQuantity) || 0;
+              const frontSecondaryQty = Number(ri.frontSecondaryQuantity) || 0;
+
+              const totalBasic = basicQty + frontBasicQty;
+              const totalSec = secondaryQty + frontSecondaryQty;
+              const countedQty = totalSec + (totalBasic / multiplier);
+
+              const roundedNormalized = Math.round(countedQty);
+              const roundedPar = Math.round(parLevel);
+              const suggestedQty = Math.max(0, roundedPar - roundedNormalized);
+
+              poItemsToCreate.push({
+                itemId: ri.itemId,
+                quantity: suggestedQty,
+                unitName: item.displayUnitName || 'pcs',
+                basicQuantity: totalBasic,
+                secondaryQuantity: totalSec,
+                normalizedQuantity: roundedNormalized,
+                parLevel: roundedPar,
+                suggestedQuantity: suggestedQty,
               });
-              const parMap = new Map(locationItems.map((li) => [li.itemId, Number(li.parLevel) || 0]));
+            }
 
-              // Calculate PO items
-              // Calculate PO items
-              const poItemsToCreate: Array<{
-                itemId: string;
-                quantity: number;
-                unitName: string;
-                basicQuantity: number;
-                secondaryQuantity: number;
-                normalizedQuantity: number;
-                parLevel: number;
-                suggestedQuantity: number;
-              }> = [];
-
-              for (const ri of fullRecord.items) {
-                const item = ri.item;
-                const parLevel = parMap.get(ri.itemId) || 0;
-                const multiplier = Number(item.multiplier) || 1;
-
-                const basicQty = Number(ri.basicQuantity) || 0;
-                const secondaryQty = Number(ri.secondaryQuantity) || 0;
-                const frontBasicQty = Number(ri.frontBasicQuantity) || 0;
-                const frontSecondaryQty = Number(ri.frontSecondaryQuantity) || 0;
-
-                const totalBasic = basicQty + frontBasicQty;
-                const totalSec = secondaryQty + frontSecondaryQty;
-                const countedQty = totalSec + (totalBasic / multiplier);
-
-                const roundedNormalized = Math.round(countedQty);
-                const roundedPar = Math.round(parLevel);
-                const suggestedQty = Math.max(0, roundedPar - roundedNormalized);
-
-                poItemsToCreate.push({
-                  itemId: ri.itemId,
-                  quantity: suggestedQty,
-                  unitName: item.displayUnitName || 'pcs',
-                  basicQuantity: totalBasic,
-                  secondaryQuantity: totalSec,
-                  normalizedQuantity: roundedNormalized,
-                  parLevel: roundedPar,
-                  suggestedQuantity: suggestedQty,
-                });
-              }
-
+            if (!existingPo) {
               // Create Draft PO
               const po = await this.prisma.purchaseOrder.create({
                 data: {
@@ -294,6 +293,22 @@ export class StockRecordsService {
               });
               createdPoId = po.id;
             } else {
+              console.log('Checking status of PO:', existingPo.status);
+              // Only update if it's still in DRAFT
+              if (existingPo.status === 'DRAFT') {
+                // Delete existing items
+                await this.prisma.purchaseOrderItem.deleteMany({
+                  where: { purchaseOrderId: existingPo.id },
+                });
+
+                // Recreate with updated quantities
+                await this.prisma.purchaseOrderItem.createMany({
+                  data: poItemsToCreate.map((item) => ({
+                    ...item,
+                    purchaseOrderId: existingPo.id,
+                  })),
+                });
+              }
               createdPoId = existingPo.id;
             }
           }
