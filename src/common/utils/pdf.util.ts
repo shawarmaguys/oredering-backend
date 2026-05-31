@@ -59,7 +59,7 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
 
       y += 18;
       doc.font('Helvetica-Bold').text('Submitted By:', 50, y);
-      doc.font('Helvetica').text(record.submitter?.fullName || 'System / Scheduler', 140, y);
+      doc.font('Helvetica').text(record.submittedByName || record.submitter?.fullName || 'System / Scheduler', 140, y);
 
       doc.font('Helvetica-Bold').text('Submitted At:', 300, y);
       doc.font('Helvetica').text(
@@ -67,10 +67,6 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
         400,
         y
       );
-
-      y += 18;
-      doc.font('Helvetica-Bold').text('Audit ID:', 50, y);
-      doc.font('Helvetica').text(record.id || 'N/A', 140, y);
 
       const tableX = 50;
       const tableWidth = doc.page.width - 100;
@@ -201,13 +197,20 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
         isAltRow = !isAltRow;
       }
 
-      // Audit footer disclaimer note
+      // Audit footer details
       y += 20;
       if (y > doc.page.height - 60) {
         doc.addPage();
         doc.rect(0, 0, doc.page.width, 15).fill(primaryColor);
         y = 40;
       }
+
+      doc.fillColor('#9ca3af')
+        .font('Helvetica')
+        .fontSize(7)
+        .text(`Audit ID: ${record.id || 'N/A'}`, 50, y, { align: 'center', width: doc.page.width - 100 });
+
+      y += 12;
 
       doc.fillColor('#9ca3af')
         .font('Helvetica-Oblique')

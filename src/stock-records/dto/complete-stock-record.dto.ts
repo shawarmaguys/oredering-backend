@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsUUID, IsArray, ValidateNested, IsNumber, IsOptional, Min } from 'class-validator';
+import { IsNotEmpty, IsUUID, IsArray, ValidateNested, IsNumber, IsOptional, Min, IsString, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CompleteStockRecordItemDto {
@@ -32,4 +32,9 @@ export class CompleteStockRecordDto {
   @ValidateNested({ each: true })
   @Type(() => CompleteStockRecordItemDto)
   items: CompleteStockRecordItemDto[];
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(120)
+  submitterName?: string;
 }

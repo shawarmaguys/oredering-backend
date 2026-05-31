@@ -168,6 +168,7 @@ export class StockRecordsService {
 
 
     const { items } = completeDto;
+    const submittedByName = completeDto.submitterName?.trim() || undefined;
     if (items.length === 0) {
       throw new BadRequestException('Stock record must contain at least one item');
     }
@@ -348,6 +349,7 @@ export class StockRecordsService {
           const pdfBuffer = await generateStockRecordPdf({
             ...fullRecord,
             vendorName,
+            submittedByName,
           });
 
           const safeLocationName = fullRecord.location.name.replace(/[^a-zA-Z0-9]/g, '_');
@@ -357,7 +359,7 @@ export class StockRecordsService {
             `• *Location:* ${fullRecord.location.name}\n` +
             `• *Vendor:* ${vendorName}\n` +
             `• *Department:* ${department?.fullName || 'N/A'}\n` +
-            `• *Submitted By:* ${fullRecord.submitter?.fullName || 'System'}\n` +
+            `• *Submitted By:* ${submittedByName || fullRecord.submitter?.fullName || 'System'}\n` +
             `• *Date:* ${new Date(fullRecord.submittedAt).toLocaleString()}\n\n`;
 
           if (createdPoId) {
@@ -452,7 +454,7 @@ export class StockRecordsService {
             try {
               const resolvedVendorChannelId = await resolveChannelId(botToken, vendorChannel);
               const triggerReplyMessage = `✅ *Stock Count Completed & Submitted*\n` +
-                `• *Submitted By:* ${fullRecord.submitter?.fullName || 'System'}\n` +
+                `• *Submitted By:* ${submittedByName || fullRecord.submitter?.fullName || 'System'}\n` +
                 `• *Date:* ${new Date(fullRecord.submittedAt).toLocaleString()}\n\n` +
                 `The detailed stock count audit report has been attached to this thread.`;
 
