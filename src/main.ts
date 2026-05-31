@@ -12,7 +12,9 @@ async function bootstrap() {
       'http://192.168.1.5:3000',
       'http://localhost:3001',
       'http://192.168.1.5:3001',
-      'https://oredering-frontend.vercel.app'
+      'https://oredering-frontend.vercel.app',
+      // allow everyone
+      '*',
     ],
     credentials: true,
   });
