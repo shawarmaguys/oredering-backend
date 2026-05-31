@@ -5,17 +5,27 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Enable CORS for development origins including 192.168.1.3
+  const allowedOrigins = new Set([
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://192.168.1.5:3000',
+    'http://192.168.1.5:3001',
+    'https://oredering-frontend.vercel.app',
+  ]);
+
+  if (process.env.FRONTEND_URL) {
+    allowedOrigins.add(process.env.FRONTEND_URL);
+  }
+
   app.enableCors({
-    origin: [
-      'http://localhost:3000',
-      'http://192.168.1.5:3000',
-      'http://localhost:3001',
-      'http://192.168.1.5:3001',
-      'https://oredering-frontend.vercel.app',
-      // allow everyone
-      '*',
-    ],
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.has(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`CORS blocked for origin: ${origin}`), false);
+    },
     credentials: true,
   });
 
