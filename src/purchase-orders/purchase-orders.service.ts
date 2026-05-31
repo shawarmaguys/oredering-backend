@@ -199,6 +199,8 @@ export class PurchaseOrdersService {
     });
 
     // Post Slack Thread Reply if there's an associated stock record
+    void (async () => {
+      try {
     const botToken = decryptToken(updatedPo.location?.slackBotToken);
     const stockRecord = updatedPo.stockRecord;
     const user = await this.prisma.user.findUnique({
@@ -226,6 +228,11 @@ export class PurchaseOrdersService {
         }
       }
     }
+
+      } catch (err) {
+        console.error('[Slack] Failed to start approval reply task:', err);
+      }
+    })();
 
     return updatedPo;
   }
@@ -315,6 +322,23 @@ export class PurchaseOrdersService {
       po.notes = sendPurchaseOrderDto.notes;
     }
 
+    const configuredEmailServiceUrl = process.env.EMAIL_SERVICE_URL;
+    if (!configuredEmailServiceUrl) {
+      throw new BadRequestException('EMAIL_SERVICE is not configured');
+    }
+
+    await this.prisma.purchaseOrder.update({
+      where: { id },
+      data: {
+        status: PurchaseOrderStatus.SENT,
+      },
+    });
+    po.status = PurchaseOrderStatus.SENT;
+
+    // Generate the PDF, send email, and post Slack replies in the background.
+    void (async () => {
+      try {
+
     // 1. Generate the purchase order PDF buffer
     const pdfBuffer = await generatePurchaseOrderPdf(po);
 
@@ -368,7 +392,7 @@ export class PurchaseOrdersService {
       ],
     };
 
-    const scriptUrl = process.env.EMAIL_SERVICE_URL;
+    const scriptUrl = configuredEmailServiceUrl;
     if (!scriptUrl) {
       throw new BadRequestException('EMAIL_SERVICE is not configured');
     }
@@ -385,15 +409,7 @@ export class PurchaseOrdersService {
       const responseText = await response.text();
       console.log('Google Script Email Response:', responseText);
 
-      // 5. Update PO status to SENT if successful
-      await this.prisma.purchaseOrder.update({
-        where: { id },
-        data: {
-          status: PurchaseOrderStatus.SENT,
-        },
-      });
-
-      // 6. Post Slack Thread Replies if there's an associated stock record
+      // 5. Post Slack Thread Replies if there's an associated stock record
       const botToken = decryptToken(po.location?.slackBotToken);
       const stockRecord = po.stockRecord;
 
@@ -436,8 +452,13 @@ export class PurchaseOrdersService {
       return { success: true, message: 'Purchase Order sent successfully!', detail: responseText };
     } catch (error: any) {
       console.error('Failed to send PO email via Google Script:', error);
-      throw new BadRequestException(`Failed to send email: ${error.message}`);
     }
+      } catch (error: any) {
+        console.error('Failed to run queued PO send task:', error);
+      }
+    })();
+
+    return { success: true, message: 'Purchase Order send queued.' };
   }
 }
 

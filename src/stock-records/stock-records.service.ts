@@ -228,7 +228,8 @@ export class StockRecordsService {
       });
     });
 
-    // 5. Generate and send PDF to the Slack channel corresponding to the department
+    // 5. Generate and send PDF/Slack notifications in the background.
+    void (async () => {
     try {
       const fullRecord = await this.prisma.stockRecord.findUnique({
         where: { id },
@@ -514,6 +515,7 @@ export class StockRecordsService {
     } catch (slackErr) {
       console.error('[Slack] Error in PDF generation/upload:', slackErr);
     }
+    })();
 
     return completedRecord;
   }
