@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, Param, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, HttpCode, HttpStatus, UseInterceptors } from '@nestjs/common';
+import { CacheInterceptor } from '@nestjs/cache-manager';
 import { SchedulesService } from './schedules.service';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -8,6 +9,7 @@ import { UserRole } from '@prisma/client';
 
 @Controller('schedules')
 @UseGuards(JwtAuthGuard, RolesGuard)
+@UseInterceptors(CacheInterceptor)
 export class SchedulesController {
   constructor(private readonly schedulesService: SchedulesService) {}
 
