@@ -59,7 +59,7 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
 
       y += 18;
       doc.font('Helvetica-Bold').text('Submitted By:', 50, y);
-      doc.font('Helvetica').text(record.submittedByName || record.submitter?.fullName || 'System / Scheduler', 140, y);
+      doc.font('Helvetica').text(record.submittedByName || record.submittedBy || 'System / Scheduler', 140, y);
 
       doc.font('Helvetica-Bold').text('Submitted At:', 300, y);
       doc.font('Helvetica').text(
@@ -288,7 +288,7 @@ export async function generatePurchaseOrderPdf(po: any): Promise<Buffer> {
 
       y += 18;
       doc.font('Helvetica-Bold').text('Created By:', 50, y);
-      doc.font('Helvetica').text(po.creator?.fullName || 'System', 150, y);
+      doc.font('Helvetica').text(po.createdBy || 'System', 150, y);
 
       doc.font('Helvetica-Bold').text('Date Generated:', 300, y);
       doc.font('Helvetica').text(

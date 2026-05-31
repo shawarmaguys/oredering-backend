@@ -21,7 +21,7 @@ import { UserRole } from '@prisma/client';
 
 @Controller('stock-records')
 export class StockRecordsController {
-  constructor(private readonly stockRecordsService: StockRecordsService) {}
+  constructor(private readonly stockRecordsService: StockRecordsService) { }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -51,6 +51,6 @@ export class StockRecordsController {
     @Body() completeStockRecordDto: CompleteStockRecordDto,
     @CurrentUser() user: any,
   ) {
-    return this.stockRecordsService.complete(id, completeStockRecordDto, user?.id || null);
+    return this.stockRecordsService.complete(id, completeStockRecordDto);
   }
 }

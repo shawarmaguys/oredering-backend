@@ -49,8 +49,6 @@ model User {
 
   // Relations
   userLocations         UserLocation[]
-  submittedStockRecords StockRecord[]     @relation("StockRecordSubmitter")
-  createdPurchaseOrders PurchaseOrder[]   @relation("PurchaseOrderCreator")
   approvedPurchaseOrders PurchaseOrder[]  @relation("PurchaseOrderApprover")
 
   @@map("users")
@@ -197,7 +195,7 @@ model LocationItem {
 model StockRecord {
   id             String    @id @default(uuid()) @db.Uuid
   locationId     String    @map("location_id") @db.Uuid
-  submittedBy    String?   @map("submitted_by") @db.Uuid
+  submittedBy    String?   @map("submitted_by")
   slackMessageTs String?   @map("slack_message_ts")
   responseSlackMessageTs String?   @map("response_slack_message_ts")
   submittedAt    DateTime  @default(now()) @map("submitted_at")
@@ -206,7 +204,6 @@ model StockRecord {
 
   // Relations
   location       Location          @relation(fields: [locationId], references: [id])
-  submitter      User?             @relation("StockRecordSubmitter", fields: [submittedBy], references: [id])
   items          StockRecordItem[]
   purchaseOrders PurchaseOrder[]
 
@@ -239,7 +236,7 @@ model PurchaseOrder {
   vendorId       String              @map("vendor_id") @db.Uuid
   locationId     String              @map("location_id") @db.Uuid
   stockRecordId  String?             @map("stock_record_id") @db.Uuid
-  createdBy      String              @map("created_by") @db.Uuid
+  createdBy      String              @map("created_by")
   approvedBy     String?             @map("approved_by") @db.Uuid
   status         PurchaseOrderStatus @default(DRAFT)
   pdfUrl         String?             @map("pdf_url")
@@ -252,7 +249,6 @@ model PurchaseOrder {
   vendor      Vendor              @relation(fields: [vendorId], references: [id])
   location    Location            @relation(fields: [locationId], references: [id])
   stockRecord StockRecord?        @relation(fields: [stockRecordId], references: [id])
-  creator     User                @relation("PurchaseOrderCreator", fields: [createdBy], references: [id])
   approver    User?               @relation("PurchaseOrderApprover", fields: [approvedBy], references: [id])
   items       PurchaseOrderItem[]
 
