@@ -36,7 +36,7 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
       doc.fillColor(textColor)
         .font('Helvetica-Bold')
         .fontSize(16)
-        .text('PHYSICAL STOCK RECORD SHEET', 50, 95, { align: 'right' });
+        .text('Current Stock Sheet'.toUpperCase(), 50, 95, { align: 'right' });
 
       // Horizontal separator line
       doc.moveTo(50, 115)
@@ -48,7 +48,7 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
       // Metadata Block
       let y = 135;
       doc.fillColor(textColor).fontSize(10);
-      
+
       // Left Column Metadata
       doc.font('Helvetica-Bold').text('Location:', 50, y);
       doc.font('Helvetica').text(record.location?.name || 'N/A', 140, y);
@@ -72,16 +72,51 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
       doc.font('Helvetica-Bold').text('Audit ID:', 50, y);
       doc.font('Helvetica').text(record.id || 'N/A', 140, y);
 
+      const tableX = 50;
+      const tableWidth = doc.page.width - 100;
+      const tableRight = tableX + tableWidth;
+      const columnDividers = [135, 300, 375, 450];
+      const rowDividerXs = [tableX, ...columnDividers, tableRight];
+      const formatQtyNumber = (value: number) => {
+        const rounded = Math.round(value * 10) / 10;
+        return Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1);
+      };
+      const formatCount = (
+        secondaryQuantity: number,
+        basicQuantity: number,
+        displayUnit: string,
+        baseUnit: string,
+        isSameUnit: boolean,
+      ) => {
+        if (isSameUnit) {
+          return `${formatQtyNumber(secondaryQuantity + basicQuantity)} ${displayUnit}`;
+        }
+
+        return `${formatQtyNumber(secondaryQuantity)} ${displayUnit}\n+ ${formatQtyNumber(basicQuantity)} ${baseUnit}`;
+      };
+      const drawStockTableHeader = (headerY: number) => {
+        doc.rect(tableX, headerY, tableWidth, 24).fill(tableHeaderBg);
+        doc.rect(tableX, headerY, tableWidth, 24).strokeColor(borderGray).lineWidth(1).stroke();
+
+        for (const dividerX of columnDividers) {
+          doc.moveTo(dividerX, headerY)
+            .lineTo(dividerX, headerY + 24)
+            .strokeColor(borderGray)
+            .lineWidth(0.5)
+            .stroke();
+        }
+
+        doc.fillColor(textColor).font('Helvetica-Bold').fontSize(8);
+        doc.text('Product Code', 60, headerY + 7, { width: 65 });
+        doc.text('Item Name', 145, headerY + 7, { width: 145 });
+        doc.text('BOH Qty', 305, headerY + 7, { width: 60, align: 'right' });
+        doc.text('FOH Qty', 380, headerY + 7, { width: 60, align: 'right' });
+        doc.text('Total Qty', 455, headerY + 7, { width: 95, align: 'right' });
+      };
+
       // Table Border Header
       y += 30;
-      doc.rect(50, y, doc.page.width - 100, 24).fill(tableHeaderBg);
-      doc.rect(50, y, doc.page.width - 100, 24).strokeColor(borderGray).lineWidth(1).stroke();
-
-      // Table Column Titles
-      doc.fillColor(textColor).font('Helvetica-Bold').fontSize(9);
-      doc.text('Product Code', 60, y + 7, { width: 90 });
-      doc.text('Item Name', 160, y + 7, { width: 220 });
-      doc.text('Counted Quantity', 390, y + 7, { width: 160, align: 'right' });
+      drawStockTableHeader(y);
 
       y += 24;
 
@@ -94,29 +129,6 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
         const displayUnit = item.displayUnitName || 'pcs';
         const baseUnit = item.baseUnitName || displayUnit;
         const isSameUnit = baseUnit.toLowerCase() === displayUnit.toLowerCase() || Number(item.multiplier) === 1;
-
-        const rowHeight = isSameUnit ? 24 : 36;
-
-        // Page breaking logic
-        if (y + rowHeight > doc.page.height - 60) {
-          doc.addPage();
-          // Header Bar Decoration on next page
-          doc.rect(0, 0, doc.page.width, 15).fill(primaryColor);
-          
-          y = 40;
-          
-          // Re-draw Table Header
-          doc.rect(50, y, doc.page.width - 100, 24).fill(tableHeaderBg);
-          doc.rect(50, y, doc.page.width - 100, 24).strokeColor(borderGray).lineWidth(1).stroke();
-          
-          doc.fillColor(textColor).font('Helvetica-Bold').fontSize(9);
-          doc.text('Product Code', 60, y + 7, { width: 90 });
-          doc.text('Item Name', 160, y + 7, { width: 220 });
-          doc.text('Counted Quantity', 390, y + 7, { width: 160, align: 'right' });
-          
-          y += 24;
-          doc.font('Helvetica').fontSize(9);
-        }
 
         const code = item.productCode || 'N/A';
         const name = item.displayName || 'Unknown Item';
@@ -132,26 +144,55 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
         const totalSec = Math.floor(totalBasicUnits / multiplier);
         const totalBasic = totalBasicUnits - (totalSec * multiplier);
 
-        let countedQty = '';
-        if (isSameUnit) {
-          countedQty = `${totalSec.toFixed(0)} ${displayUnit} (B: ${backSec.toFixed(0)} | F: ${frontSec.toFixed(0)})`;
-        } else {
-          countedQty = `${totalSec.toFixed(0)} ${displayUnit} + ${totalBasic.toFixed(1)} ${baseUnit}\n(B: ${backSec.toFixed(0)}+${backBasic.toFixed(1)} | F: ${frontSec.toFixed(0)}+${frontBasic.toFixed(1)})`;
+        const bohQty = formatCount(backSec, backBasic, displayUnit, baseUnit, isSameUnit);
+        const fohQty = formatCount(frontSec, frontBasic, displayUnit, baseUnit, isSameUnit);
+        const totalQty = isSameUnit
+          ? `${formatQtyNumber(totalBasicUnits)} ${displayUnit}`
+          : formatCount(totalSec, totalBasic, displayUnit, baseUnit, false);
+
+        const nameHeight = doc.heightOfString(name, { width: 145 });
+        const quantityHeight = doc.heightOfString(totalQty, { width: 95, align: 'right' });
+        const rowHeight = Math.max(isSameUnit ? 24 : 38, nameHeight + 12, quantityHeight + 12);
+
+        // Page breaking logic
+        if (y + rowHeight > doc.page.height - 60) {
+          doc.addPage();
+          // Header Bar Decoration on next page
+          doc.rect(0, 0, doc.page.width, 15).fill(primaryColor);
+
+          y = 40;
+
+          // Re-draw Table Header
+          drawStockTableHeader(y);
+
+          y += 24;
+          doc.font('Helvetica').fontSize(9);
         }
 
         // Row background shading for readability
         if (isAltRow) {
-          doc.rect(50, y, doc.page.width - 100, rowHeight).fill('#fafafa');
+          doc.rect(tableX, y, tableWidth, rowHeight).fill('#fafafa');
         }
         
-        doc.fillColor(textColor);
-        doc.text(code, 60, y + 6, { width: 90 });
-        doc.text(name, 160, y + 6, { width: 220 });
-        doc.text(countedQty, 390, y + 6, { width: 160, align: 'right' });
+        for (const dividerX of rowDividerXs) {
+          doc.moveTo(dividerX, y)
+            .lineTo(dividerX, y + rowHeight)
+            .strokeColor(borderGray)
+            .lineWidth(0.5)
+            .stroke();
+        }
+
+        doc.fillColor(textColor).font('Helvetica').fontSize(8);
+        doc.text(code, 60, y + 6, { width: 65 });
+        doc.text(name, 145, y + 6, { width: 145 });
+        doc.text(bohQty, 305, y + 6, { width: 60, align: 'right' });
+        doc.text(fohQty, 380, y + 6, { width: 60, align: 'right' });
+        doc.font('Helvetica-Bold').text(totalQty, 455, y + 6, { width: 95, align: 'right' });
+        doc.font('Helvetica').fontSize(8);
 
         // Draw row bottom border line
-        doc.moveTo(50, y + rowHeight)
-          .lineTo(doc.page.width - 50, y + rowHeight)
+        doc.moveTo(tableX, y + rowHeight)
+          .lineTo(tableRight, y + rowHeight)
           .strokeColor(borderGray)
           .lineWidth(0.5)
           .stroke();
@@ -233,7 +274,7 @@ export async function generatePurchaseOrderPdf(po: any): Promise<Buffer> {
       // Metadata Block
       let y = 135;
       doc.fillColor(textColor).fontSize(10);
-      
+
       // Left Column Metadata
       doc.font('Helvetica-Bold').text('Location / Store:', 50, y);
       doc.font('Helvetica').text(po.location?.name || 'N/A', 150, y);
@@ -280,18 +321,18 @@ export async function generatePurchaseOrderPdf(po: any): Promise<Buffer> {
         if (y > doc.page.height - 80) {
           doc.addPage();
           doc.rect(0, 0, doc.page.width, 15).fill(primaryColor);
-          
+
           y = 40;
-          
+
           doc.rect(50, y, doc.page.width - 100, 24).fill(tableHeaderBg);
           doc.rect(50, y, doc.page.width - 100, 24).strokeColor(borderGray).lineWidth(1).stroke();
-          
+
           doc.fillColor(textColor).font('Helvetica-Bold').fontSize(9);
           doc.text('Product Code', 60, y + 7, { width: 90 });
           doc.text('Item Name', 160, y + 7, { width: 220 });
           doc.text('Ordering Unit', 390, y + 7, { width: 90 });
           doc.text('Order Quantity', 490, y + 7, { width: 70, align: 'right' });
-          
+
           y += 24;
           doc.font('Helvetica').fontSize(9);
         }
@@ -306,7 +347,7 @@ export async function generatePurchaseOrderPdf(po: any): Promise<Buffer> {
         if (isAltRow) {
           doc.rect(50, y, doc.page.width - 100, 22).fill('#fafafa');
         }
-        
+
         doc.fillColor(textColor);
         doc.text(code, 60, y + 6, { width: 90 });
         doc.text(name, 160, y + 6, { width: 220 });
@@ -337,13 +378,13 @@ export async function generatePurchaseOrderPdf(po: any): Promise<Buffer> {
           .font('Helvetica-Bold')
           .fontSize(9)
           .text('Notes / Dispatch Instructions:', 50, y);
-        
+
         y += 14;
         doc.fillColor(secondaryTextColor)
           .font('Helvetica')
           .fontSize(9)
           .text(po.notes, 50, y, { width: doc.page.width - 100 });
-        
+
         y += Math.ceil(doc.heightOfString(po.notes, { width: doc.page.width - 100 })) + 10;
       }
 
