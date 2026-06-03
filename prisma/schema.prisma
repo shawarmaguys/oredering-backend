@@ -242,6 +242,7 @@ model PurchaseOrder {
   pdfUrl         String?             @map("pdf_url")
   slackMessageTs String?             @map("slack_message_ts")
   notes          String?
+  emailsSent     String?             @map("emails_sent")
   createdAt      DateTime            @default(now()) @map("created_at")
   approvedAt     DateTime?           @map("approved_at")
 

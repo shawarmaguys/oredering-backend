@@ -189,8 +189,16 @@ export class PurchaseOrdersService {
     const configuredEmailServiceUrl = process.env.EMAIL_SERVICE_URL;
     if (!configuredEmailServiceUrl) throw new BadRequestException('EMAIL_SERVICE is not configured');
 
-    await this.prisma.purchaseOrder.update({ where: { id }, data: { status: PurchaseOrderStatus.SENT } });
+    const emailsSentStr = sendPurchaseOrderDto.emails.join(', ');
+    await this.prisma.purchaseOrder.update({
+      where: { id },
+      data: {
+        status: PurchaseOrderStatus.SENT,
+        emailsSent: emailsSentStr,
+      },
+    });
     po.status = PurchaseOrderStatus.SENT;
+    po.emailsSent = emailsSentStr;
 
     // Generate the PDF, send email, and post Slack replies in the background.
     void (async () => {

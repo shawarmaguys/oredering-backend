@@ -169,7 +169,7 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
         if (isAltRow) {
           doc.rect(tableX, y, tableWidth, rowHeight).fill('#fafafa');
         }
-        
+
         for (const dividerX of rowDividerXs) {
           doc.moveTo(dividerX, y)
             .lineTo(dividerX, y + rowHeight)
@@ -250,22 +250,36 @@ export async function generatePurchaseOrderPdf(po: any): Promise<Buffer> {
       // Header Bar Decoration
       doc.rect(0, 0, doc.page.width, 15).fill(primaryColor);
 
-      // Brand Title
+      // Brand Title & Logo
+      const logoX = 50;
+      const logoY = 35;
+      const logoSize = 34;
+
+      // Draw background rounded square (emerald color)
+      doc.roundedRect(logoX, logoY, logoSize, logoSize, 8).fill(primaryColor);
+
+      // Draw text "SG" in white inside the square
+      doc.fillColor('#ffffff')
+        .font('Helvetica-Bold')
+        .fontSize(14)
+        .text('SG', logoX, logoY + 10, { width: logoSize, align: 'center' });
+
+      // Brand Title next to logo
       doc.fillColor(primaryColor)
         .font('Helvetica-Bold')
-        .fontSize(22)
-        .text('SHAWARMA GUYS', 50, 40);
+        .fontSize(20)
+        .text('SHAWARMA GUYS', 95, 36);
 
       doc.fillColor(secondaryTextColor)
         .font('Helvetica')
         .fontSize(8)
-        .text('AUTOMATED INVENTORY AUDIT CONTROL SYSTEM', 50, 65);
+        .text('AUTOMATED INVENTORY AUDIT CONTROL SYSTEM', 95, 58);
 
       // Report Header Title
       doc.fillColor(textColor)
         .font('Helvetica-Bold')
         .fontSize(16)
-        .text('OFFICIAL PURCHASE ORDER', 50, 95, { align: 'right' });
+        .text('PURCHASE ORDER', 50, 95, { align: 'right' });
 
       // Horizontal separator line
       doc.moveTo(50, 115)
@@ -274,32 +288,100 @@ export async function generatePurchaseOrderPdf(po: any): Promise<Buffer> {
         .lineWidth(2)
         .stroke();
 
-      // Metadata Block
+      // Two-column layout for detailed Location and Vendor info
       let y = 135;
-      doc.fillColor(textColor).fontSize(10);
+      doc.fillColor(textColor).fontSize(9);
 
-      // Left Column Metadata
-      doc.font('Helvetica-Bold').text('Location / Store:', 50, y);
-      doc.font('Helvetica').text(po.location?.name || 'N/A', 150, y);
+      // Column Titles
+      doc.font('Helvetica-Bold').fontSize(10).fillColor(primaryColor);
+      doc.text('FROM:', 50, y);
+      doc.text('TO:', 310, y);
 
-      // Right Column Metadata
-      doc.font('Helvetica-Bold').text('Supplier / Vendor:', 300, y);
-      doc.font('Helvetica').text(po.vendor?.displayName || 'N/A', 410, y);
+      y += 16;
+      doc.fillColor(textColor).fontSize(9);
 
-      y += 18;
-      doc.font('Helvetica-Bold').text('Created By:', 50, y);
-      doc.font('Helvetica').text(po.createdBy || 'System', 150, y);
+      // Left Column (Location) details
+      let leftY = y;
+      doc.font('Helvetica-Bold').text(po.location?.name || 'Shawarma Guys Store', 50, leftY);
+      leftY += 13;
+      doc.font('Helvetica');
+      if (po.location?.address) {
+        doc.text(po.location.address, 50, leftY, { width: 240 });
+        leftY += doc.heightOfString(po.location.address, { width: 240 }) + 2;
+      }
+      if (po.location?.phone) {
+        doc.text(`Phone: ${po.location.phone}`, 50, leftY);
+        leftY += 13;
+      }
+      if (po.location?.email) {
+        doc.text(`Email: ${po.location.email}`, 50, leftY);
+        leftY += 13;
+      }
+
+      // Right Column (Vendor) details
+      let rightY = y;
+      doc.font('Helvetica-Bold').text(po.vendor?.displayName || 'Supplier', 310, rightY);
+      rightY += 13;
+      doc.font('Helvetica');
+      const vendorAddressParts = [po.vendor?.address1, po.vendor?.address2, po.vendor?.address3].filter(Boolean);
+      if (vendorAddressParts.length > 0) {
+        const vendorAddress = vendorAddressParts.join('\n');
+        doc.text(vendorAddress, 310, rightY, { width: 240 });
+        rightY += doc.heightOfString(vendorAddress, { width: 240 }) + 2;
+      }
+      if (po.vendor?.phone) {
+        doc.text(`Phone: ${po.vendor.phone}`, 310, rightY);
+        rightY += 13;
+      }
+
+      // Use the maximum of the two columns' Y positions for the next section
+      y = Math.max(leftY, rightY) + 15;
+
+      // Draw a line separator
+      doc.moveTo(50, y)
+        .lineTo(doc.page.width - 50, y)
+        .strokeColor(borderGray)
+        .lineWidth(1)
+        .stroke();
+
+      y += 10;
+
+      // Order Metadata Grid
+      doc.fillColor(textColor).fontSize(9);
+
+      // Row 1
+      doc.font('Helvetica-Bold').text('PO ID:', 50, y);
+      const shortPoId = po.id ? po.id.slice(0, 8).toUpperCase() : 'N/A';
+      doc.font('Helvetica').text(shortPoId, 130, y);
 
       doc.font('Helvetica-Bold').text('Date Generated:', 300, y);
       doc.font('Helvetica').text(
         po.createdAt ? new Date(po.createdAt).toLocaleDateString() : 'N/A',
-        410,
+        400,
         y
       );
 
-      y += 18;
-      doc.font('Helvetica-Bold').text('Purchase Order ID:', 50, y);
-      doc.font('Helvetica').text(po.id || 'N/A', 150, y);
+      y += 15;
+
+      // Row 2
+      doc.font('Helvetica-Bold').text('Created By:', 50, y);
+      doc.font('Helvetica').text(po.createdBy || 'System', 130, y);
+
+      if (po.approvedBy || po.approver) {
+        doc.font('Helvetica-Bold').text('Approved By:', 300, y);
+        const approverName = po.approver?.fullName || po.approvedBy || 'Manager';
+        doc.font('Helvetica').text(approverName, 400, y);
+        y += 15;
+      } else {
+        y += 15;
+      }
+
+      // Row 3 (Emails sent)
+      if (po.emailsSent) {
+        doc.font('Helvetica-Bold').text('Sent To:', 50, y);
+        doc.font('Helvetica').text(po.emailsSent, 130, y, { width: doc.page.width - 180 });
+        y += doc.heightOfString(po.emailsSent, { width: doc.page.width - 180 }) + 5;
+      }
 
       // Table Border Header
       y += 30;

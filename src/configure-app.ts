@@ -12,8 +12,8 @@ export function configureApp(app: INestApplication) {
   const allowedOrigins = new Set([
     'http://localhost:3000',
     'http://localhost:3001',
-    'http://192.168.1.5:3000',
-    'http://192.168.1.5:3001',
+    'http://192.168.1.9:3000',
+    'http://192.168.1.9:3001',
     'https://oredering-frontend.vercel.app',
   ]);
 
