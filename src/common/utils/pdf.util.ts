@@ -1,4 +1,14 @@
 import PDFDocument from 'pdfkit';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const getLogoPath = () => {
+  const cwdPath = path.resolve(process.cwd(), 'sgnewlogo.png');
+  if (fs.existsSync(cwdPath)) return cwdPath;
+  const relativePath = path.resolve(__dirname, '../../..', 'sgnewlogo.png');
+  if (fs.existsSync(relativePath)) return relativePath;
+  return '';
+};
 
 export async function generateStockRecordPdf(record: any): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -117,7 +127,7 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
       y += 24;
 
       // Table Rows
-      doc.font('Helvetica').fontSize(9);
+      doc.font('Helvetica').fontSize(8);
       let isAltRow = false;
 
       for (const recordItem of record.items || []) {
@@ -148,7 +158,7 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
 
         const nameHeight = doc.heightOfString(name, { width: 145 });
         const quantityHeight = doc.heightOfString(totalQty, { width: 95, align: 'right' });
-        const rowHeight = Math.max(isSameUnit ? 24 : 38, nameHeight + 12, quantityHeight + 12);
+        const rowHeight = Math.max(isSameUnit ? 18 : 28, nameHeight + 6, quantityHeight + 6);
 
         // Page breaking logic
         if (y + rowHeight > doc.page.height - 60) {
@@ -162,7 +172,7 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
           drawStockTableHeader(y);
 
           y += 24;
-          doc.font('Helvetica').fontSize(9);
+          doc.font('Helvetica').fontSize(8);
         }
 
         // Row background shading for readability
@@ -179,11 +189,12 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
         }
 
         doc.fillColor(textColor).font('Helvetica').fontSize(8);
-        doc.text(code, 60, y + 6, { width: 65 });
-        doc.text(name, 145, y + 6, { width: 145 });
-        doc.text(bohQty, 305, y + 6, { width: 60, align: 'right' });
-        doc.text(fohQty, 380, y + 6, { width: 60, align: 'right' });
-        doc.font('Helvetica-Bold').text(totalQty, 455, y + 6, { width: 95, align: 'right' });
+        const textOffset = 4;
+        doc.text(code, 60, y + textOffset, { width: 65 });
+        doc.text(name, 145, y + textOffset, { width: 145 });
+        doc.text(bohQty, 305, y + textOffset, { width: 60, align: 'right' });
+        doc.text(fohQty, 380, y + textOffset, { width: 60, align: 'right' });
+        doc.font('Helvetica-Bold').text(totalQty, 455, y + textOffset, { width: 95, align: 'right' });
         doc.font('Helvetica').fontSize(8);
 
         // Draw row bottom border line
@@ -239,9 +250,9 @@ export async function generatePurchaseOrderPdf(po: any): Promise<Buffer> {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', (err) => reject(err));
 
-      // Brand Colors (Emerald/Green Theme for Orders)
-      const primaryColor = '#10b981'; // Emerald 500
-      const accentColor = '#34d399'; // Emerald 400
+      // Brand Colors (Red Theme for Orders)
+      const primaryColor = '#C0212F'; // Red
+      const accentColor = '#E03E4B'; // Accent Red
       const textColor = '#1f2937'; // Gray 800
       const secondaryTextColor = '#4b5563'; // Gray 600
       const borderGray = '#e5e7eb'; // Gray 200
@@ -251,29 +262,30 @@ export async function generatePurchaseOrderPdf(po: any): Promise<Buffer> {
       doc.rect(0, 0, doc.page.width, 15).fill(primaryColor);
 
       // Brand Title & Logo
-      const logoX = 50;
-      const logoY = 35;
-      const logoSize = 34;
-
-      // Draw background rounded square (emerald color)
-      doc.roundedRect(logoX, logoY, logoSize, logoSize, 8).fill(primaryColor);
-
-      // Draw text "SG" in white inside the square
-      doc.fillColor('#ffffff')
-        .font('Helvetica-Bold')
-        .fontSize(14)
-        .text('SG', logoX, logoY + 10, { width: logoSize, align: 'center' });
-
-      // Brand Title next to logo
+      const logoPath = getLogoPath();
+      if (fs.existsSync(logoPath)) {
+        doc.image(logoPath, 50, 25, { height: 50 });
+      } else {
+        const logoX = 50;
+        const logoY = 35;
+        const logoSize = 34;
+        // Draw background rounded square (emerald color)
+        doc.roundedRect(logoX, logoY, logoSize, logoSize, 8).fill(primaryColor);
+        // Draw text "SG" in white inside the square
+        doc.fillColor('#ffffff')
+          .font('Helvetica-Bold')
+          .fontSize(14)
+          .text('SG', logoX, logoY + 10, { width: logoSize, align: 'center' });
+      }
       doc.fillColor(primaryColor)
         .font('Helvetica-Bold')
         .fontSize(20)
-        .text('SHAWARMA GUYS', 95, 36);
+        .text('SHAWARMA GUYS', 115, 36);
 
       doc.fillColor(secondaryTextColor)
         .font('Helvetica')
         .fontSize(8)
-        .text('AUTOMATED INVENTORY AUDIT CONTROL SYSTEM', 95, 58);
+        .text('AUTOMATED INVENTORY AUDIT CONTROL SYSTEM', 115, 58);
 
       // Report Header Title
       doc.fillColor(textColor)
