@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Body,
   Query,
@@ -45,5 +46,12 @@ export class ItemsController {
     @Body() updateItemDto: UpdateItemDto,
   ) {
     return this.itemsService.update(id, updateItemDto);
+  }
+
+  @Delete(':id')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_MANAGER, UserRole.MANAGER)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(@Param('id') id: string) {
+    await this.itemsService.remove(id);
   }
 }

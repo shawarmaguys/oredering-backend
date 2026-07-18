@@ -77,6 +77,7 @@ export class LocationsService {
 
     // Fetch all items in catalog
     const items = await this.prisma.item.findMany({
+      where: { isActive: true },
       include: {
         vendor: true,
       },

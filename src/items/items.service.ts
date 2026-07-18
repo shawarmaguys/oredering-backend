@@ -38,7 +38,10 @@ export class ItemsService {
 
   async findAll(vendorId?: string) {
     return this.prisma.item.findMany({
-      where: vendorId ? { vendorId } : {},
+      where: {
+        isActive: true,
+        ...(vendorId ? { vendorId } : {}),
+      },
       include: {
         vendor: true,
       },
@@ -87,5 +90,24 @@ export class ItemsService {
         vendor: true,
       },
     });
+  }
+
+  async remove(id: string) {
+    const item = await this.prisma.item.findUnique({
+      where: { id },
+    });
+    if (!item) {
+      throw new NotFoundException(`Item with ID ${id} not found`);
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.locationItem.deleteMany({
+        where: { itemId: id },
+      }),
+      this.prisma.item.update({
+        where: { id },
+        data: { isActive: false },
+      }),
+    ]);
   }
 }
