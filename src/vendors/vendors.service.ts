@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateVendorDto } from './dto/create-vendor.dto';
 
@@ -130,6 +130,62 @@ export class VendorsService {
 
     return this.prisma.department.delete({
       where: { id },
+    });
+  }
+
+  async remove(id: string) {
+    const vendor = await this.prisma.vendor.findUnique({
+      where: { id },
+      include: {
+        items: true,
+        purchaseOrders: true,
+        schedules: true,
+      },
+    });
+    if (!vendor) {
+      throw new NotFoundException(`Vendor with ID ${id} not found`);
+    }
+
+    if (vendor.purchaseOrders.length > 0) {
+      throw new ConflictException(
+        `Cannot delete vendor. It has ${vendor.purchaseOrders.length} associated purchase orders.`,
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // Delete schedules
+      await tx.schedule.deleteMany({
+        where: { vendorId: id },
+      });
+
+      // Clean up items and their locationItems
+      for (const item of vendor.items) {
+        await tx.locationItem.deleteMany({
+          where: { itemId: item.id },
+        });
+
+        const hasHistory = await tx.stockRecordItem.findFirst({
+          where: { itemId: item.id },
+        }) || await tx.purchaseOrderItem.findFirst({
+          where: { itemId: item.id },
+        });
+
+        if (hasHistory) {
+          await tx.item.update({
+            where: { id: item.id },
+            data: { isActive: false },
+          });
+        } else {
+          await tx.item.delete({
+            where: { id: item.id },
+          });
+        }
+      }
+
+      // Delete the vendor
+      await tx.vendor.delete({
+        where: { id },
+      });
     });
   }
 }

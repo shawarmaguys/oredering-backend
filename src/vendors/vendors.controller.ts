@@ -74,4 +74,11 @@ export class VendorsController {
   ) {
     return this.vendorsService.update(id, updateVendorDto);
   }
+
+  @Delete(':id')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_MANAGER)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(@Param('id') id: string) {
+    await this.vendorsService.remove(id);
+  }
 }

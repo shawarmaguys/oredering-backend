@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateStockRecordDto } from './dto/create-stock-record.dto';
 import { CompleteStockRecordDto } from './dto/complete-stock-record.dto';
@@ -7,9 +11,12 @@ import { generateStockRecordPdf } from '../common/utils/pdf.util';
 
 @Injectable()
 export class StockRecordsService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
-  async create(createStockRecordDto: CreateStockRecordDto, userId: string | null) {
+  async create(
+    createStockRecordDto: CreateStockRecordDto,
+    userId: string | null,
+  ) {
     const { locationId, items } = createStockRecordDto;
 
     // Check location
@@ -21,7 +28,9 @@ export class StockRecordsService {
     }
 
     if (items.length === 0) {
-      throw new BadRequestException('Stock record must contain at least one item');
+      throw new BadRequestException(
+        'Stock record must contain at least one item',
+      );
     }
 
     // Process items in a transaction
@@ -47,7 +56,9 @@ export class StockRecordsService {
       for (const itemDto of items) {
         const dbItem = dbItemMap.get(itemDto.itemId);
         if (!dbItem) {
-          throw new NotFoundException(`Item with ID ${itemDto.itemId} not found`);
+          throw new NotFoundException(
+            `Item with ID ${itemDto.itemId} not found`,
+          );
         }
 
         await tx.stockRecordItem.create({
@@ -131,9 +142,11 @@ export class StockRecordsService {
       throw new NotFoundException(`Stock record with ID ${id} not found`);
     }
     const { items } = completeDto;
-    const submittedByName = completeDto.submitterName?.trim() || "no-user";
+    const submittedByName = completeDto.submitterName?.trim() || 'no-user';
     if (items.length === 0) {
-      throw new BadRequestException('Stock record must contain at least one item');
+      throw new BadRequestException(
+        'Stock record must contain at least one item',
+      );
     }
 
     const completedRecord = await this.prisma.$transaction(async (tx) => {
@@ -152,22 +165,23 @@ export class StockRecordsService {
 
       // 3. Create Stock Record Items
       for (const itemDto of items) {
-        const dbItem = dbItemMap.get(itemDto.itemId);
-        if (!dbItem) {
-          throw new NotFoundException(`Item with ID ${itemDto.itemId} not found`);
+        if (!dbItemMap.has(itemDto.itemId)) {
+          throw new NotFoundException(
+            `Item with ID ${itemDto.itemId} not found`,
+          );
         }
-
-        await tx.stockRecordItem.create({
-          data: {
-            stockRecordId: id,
-            itemId: itemDto.itemId,
-            basicQuantity: itemDto.basicQuantity || 0,
-            secondaryQuantity: itemDto.secondaryQuantity || 0,
-            frontBasicQuantity: itemDto.frontBasicQuantity || 0,
-            frontSecondaryQuantity: itemDto.frontSecondaryQuantity || 0,
-          },
-        });
       }
+
+      await tx.stockRecordItem.createMany({
+        data: items.map((itemDto) => ({
+          stockRecordId: id,
+          itemId: itemDto.itemId,
+          basicQuantity: itemDto.basicQuantity || 0,
+          secondaryQuantity: itemDto.secondaryQuantity || 0,
+          frontBasicQuantity: itemDto.frontBasicQuantity || 0,
+          frontSecondaryQuantity: itemDto.frontSecondaryQuantity || 0,
+        })),
+      });
 
       // 4. Update Stock Record to complete
       return tx.stockRecord.update({
@@ -232,7 +246,9 @@ export class StockRecordsService {
                 itemId: { in: fullRecord.items.map((ri) => ri.itemId) },
               },
             });
-            const parMap = new Map(locationItems.map((li) => [li.itemId, Number(li.parLevel) || 0]));
+            const parMap = new Map(
+              locationItems.map((li) => [li.itemId, Number(li.parLevel) || 0]),
+            );
 
             // Calculate PO items
             const poItemsToCreate: Array<{
@@ -258,7 +274,7 @@ export class StockRecordsService {
 
               const totalBasic = basicQty + frontBasicQty;
               const totalSec = secondaryQty + frontSecondaryQty;
-              const countedQty = totalSec + (totalBasic / multiplier);
+              const countedQty = totalSec + totalBasic / multiplier;
 
               const roundedNormalized = Math.round(countedQty);
               const roundedPar = Math.round(parLevel);
@@ -317,7 +333,10 @@ export class StockRecordsService {
           const slackChannel = department?.slackChannel;
 
           if (botToken && slackChannel) {
-            const resolvedChannelId = await resolveChannelId(botToken, slackChannel);
+            const resolvedChannelId = await resolveChannelId(
+              botToken,
+              slackChannel,
+            );
 
             const pdfBuffer = await generateStockRecordPdf({
               ...fullRecord,
@@ -325,10 +344,14 @@ export class StockRecordsService {
               submittedByName,
             });
 
-            const safeLocationName = fullRecord.location.name.replace(/[^a-zA-Z0-9]/g, '_');
+            const safeLocationName = fullRecord.location.name.replace(
+              /[^a-zA-Z0-9]/g,
+              '_',
+            );
             const fileName = `StockAudit_${safeLocationName}_${new Date().toISOString().split('T')[0]}.pdf`;
 
-            let message = `📄 *Stock Count Audit Submitted*\n` +
+            let message =
+              `📄 *Stock Count Audit Submitted*\n` +
               `• *Location:* ${fullRecord.location.name}\n` +
               `• *Vendor:* ${vendorName}\n` +
               `• *Department:* ${department?.fullName || 'N/A'}\n` +
@@ -336,8 +359,10 @@ export class StockRecordsService {
               `• *Date:* ${new Date(fullRecord.submittedAt).toLocaleString()}\n\n`;
 
             if (createdPoId) {
-              const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-              message += `🛍️ *Auto-Drafted Purchase Order Created*\n` +
+              const frontendUrl =
+                process.env.FRONTEND_URL || 'http://localhost:3000';
+              message +=
+                `🛍️ *Auto-Drafted Purchase Order Created*\n` +
                 `• *Status:* DRAFT\n` +
                 `• *Review Link:* <${frontendUrl}/dashboard/admin/reports?poId=${createdPoId}|Review & Approve Purchase Order (Managers/Admins Only)>\n\n`;
             }
@@ -345,17 +370,20 @@ export class StockRecordsService {
             message += `Please find the detailed PDF report attached below.`;
 
             // Send the message text first to get the ts
-            const postMsgResponse = await fetch('https://slack.com/api/chat.postMessage', {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${botToken}`,
-                'Content-Type': 'application/json',
+            const postMsgResponse = await fetch(
+              'https://slack.com/api/chat.postMessage',
+              {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${botToken}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  channel: resolvedChannelId,
+                  text: message,
+                }),
               },
-              body: JSON.stringify({
-                channel: resolvedChannelId,
-                text: message,
-              }),
-            });
+            );
 
             const postMsgResult: any = await postMsgResponse.json();
             if (postMsgResult.ok && postMsgResult.ts) {
@@ -373,14 +401,17 @@ export class StockRecordsService {
               urlEncodedBody.append('filename', fileName);
               urlEncodedBody.append('length', pdfBuffer.length.toString());
 
-              const getUrlResponse = await fetch('https://slack.com/api/files.getUploadURLExternal', {
-                method: 'POST',
-                headers: {
-                  Authorization: `Bearer ${botToken}`,
-                  'Content-Type': 'application/x-www-form-urlencoded',
+              const getUrlResponse = await fetch(
+                'https://slack.com/api/files.getUploadURLExternal',
+                {
+                  method: 'POST',
+                  headers: {
+                    Authorization: `Bearer ${botToken}`,
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                  },
+                  body: urlEncodedBody.toString(),
                 },
-                body: urlEncodedBody.toString(),
-              });
+              );
 
               const getUrlResult: any = await getUrlResponse.json();
               if (getUrlResult.ok) {
@@ -394,39 +425,58 @@ export class StockRecordsService {
 
                 if (uploadFileResponse.ok) {
                   // Step 3: Complete the file upload and share with the thread
-                  const completeResponse = await fetch('https://slack.com/api/files.completeUploadExternal', {
-                    method: 'POST',
-                    headers: {
-                      Authorization: `Bearer ${botToken}`,
-                      'Content-Type': 'application/json',
+                  const completeResponse = await fetch(
+                    'https://slack.com/api/files.completeUploadExternal',
+                    {
+                      method: 'POST',
+                      headers: {
+                        Authorization: `Bearer ${botToken}`,
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({
+                        files: [{ id: file_id, title: fileName }],
+                        channel_id: resolvedChannelId,
+                        thread_ts: responseSlackMessageTs,
+                      }),
                     },
-                    body: JSON.stringify({
-                      files: [{ id: file_id, title: fileName }],
-                      channel_id: resolvedChannelId,
-                      thread_ts: responseSlackMessageTs,
-                    }),
-                  });
+                  );
 
                   const completeResult: any = await completeResponse.json();
                   if (!completeResult.ok) {
-                    console.error('[Slack] completeUploadExternal failed:', completeResult.error);
+                    console.error(
+                      '[Slack] completeUploadExternal failed:',
+                      completeResult.error,
+                    );
                   }
                 } else {
-                  console.error('[Slack] External binary upload failed with status:', uploadFileResponse.status);
+                  console.error(
+                    '[Slack] External binary upload failed with status:',
+                    uploadFileResponse.status,
+                  );
                 }
               } else {
-                console.error('[Slack] getUploadURLExternal failed:', getUrlResult.error);
+                console.error(
+                  '[Slack] getUploadURLExternal failed:',
+                  getUrlResult.error,
+                );
               }
             } else {
-              console.error('[Slack] chat.postMessage failed:', postMsgResult.error);
+              console.error(
+                '[Slack] chat.postMessage failed:',
+                postMsgResult.error,
+              );
             }
 
             // In addition, if this stock record was triggered by a schedule and has a slackMessageTs, send the PDF as a threaded reply to the trigger message.
             const vendorChannel = vendor?.channelName;
             if (fullRecord.slackMessageTs && vendorChannel) {
               try {
-                const resolvedVendorChannelId = await resolveChannelId(botToken, vendorChannel);
-                const triggerReplyMessage = `✅ *Stock Count Completed & Submitted*\n` +
+                const resolvedVendorChannelId = await resolveChannelId(
+                  botToken,
+                  vendorChannel,
+                );
+                const triggerReplyMessage =
+                  `✅ *Stock Count Completed & Submitted*\n` +
                   `• *Submitted By:* ${submittedByName || fullRecord.submittedBy || 'System'}\n` +
                   `• *Date:* ${new Date(fullRecord.submittedAt).toLocaleString()}\n\n` +
                   `The detailed stock count audit report has been attached to this thread.`;
@@ -434,20 +484,27 @@ export class StockRecordsService {
                 // Step 1: Get upload URL and file ID for the reply
                 const urlEncodedBodyReply = new URLSearchParams();
                 urlEncodedBodyReply.append('filename', fileName);
-                urlEncodedBodyReply.append('length', pdfBuffer.length.toString());
+                urlEncodedBodyReply.append(
+                  'length',
+                  pdfBuffer.length.toString(),
+                );
 
-                const getUrlResponseReply = await fetch('https://slack.com/api/files.getUploadURLExternal', {
-                  method: 'POST',
-                  headers: {
-                    Authorization: `Bearer ${botToken}`,
-                    'Content-Type': 'application/x-www-form-urlencoded',
+                const getUrlResponseReply = await fetch(
+                  'https://slack.com/api/files.getUploadURLExternal',
+                  {
+                    method: 'POST',
+                    headers: {
+                      Authorization: `Bearer ${botToken}`,
+                      'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: urlEncodedBodyReply.toString(),
                   },
-                  body: urlEncodedBodyReply.toString(),
-                });
+                );
 
                 const getUrlResultReply: any = await getUrlResponseReply.json();
                 if (getUrlResultReply.ok) {
-                  const { upload_url: uploadUrlReply, file_id: fileIdReply } = getUrlResultReply;
+                  const { upload_url: uploadUrlReply, file_id: fileIdReply } =
+                    getUrlResultReply;
 
                   const uploadFileResponseReply = await fetch(uploadUrlReply, {
                     method: 'POST',
@@ -455,31 +512,47 @@ export class StockRecordsService {
                   });
 
                   if (uploadFileResponseReply.ok) {
-                    const completeResponseReply = await fetch('https://slack.com/api/files.completeUploadExternal', {
-                      method: 'POST',
-                      headers: {
-                        Authorization: `Bearer ${botToken}`,
-                        'Content-Type': 'application/json',
+                    const completeResponseReply = await fetch(
+                      'https://slack.com/api/files.completeUploadExternal',
+                      {
+                        method: 'POST',
+                        headers: {
+                          Authorization: `Bearer ${botToken}`,
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                          files: [{ id: fileIdReply, title: fileName }],
+                          channel_id: resolvedVendorChannelId,
+                          thread_ts: fullRecord.slackMessageTs,
+                          initial_comment: triggerReplyMessage,
+                        }),
                       },
-                      body: JSON.stringify({
-                        files: [{ id: fileIdReply, title: fileName }],
-                        channel_id: resolvedVendorChannelId,
-                        thread_ts: fullRecord.slackMessageTs,
-                        initial_comment: triggerReplyMessage,
-                      }),
-                    });
-                    const completeResultReply: any = await completeResponseReply.json();
+                    );
+                    const completeResultReply: any =
+                      await completeResponseReply.json();
                     if (!completeResultReply.ok) {
-                      console.error('[Slack] completeUploadExternal for trigger reply failed:', completeResultReply.error);
+                      console.error(
+                        '[Slack] completeUploadExternal for trigger reply failed:',
+                        completeResultReply.error,
+                      );
                     }
                   } else {
-                    console.error('[Slack] Binary upload for trigger reply failed with status:', uploadFileResponseReply.status);
+                    console.error(
+                      '[Slack] Binary upload for trigger reply failed with status:',
+                      uploadFileResponseReply.status,
+                    );
                   }
                 } else {
-                  console.error('[Slack] getUploadURLExternal for trigger reply failed:', getUrlResultReply.error);
+                  console.error(
+                    '[Slack] getUploadURLExternal for trigger reply failed:',
+                    getUrlResultReply.error,
+                  );
                 }
               } catch (err) {
-                console.error('[Slack] Error sending trigger notification reply:', err);
+                console.error(
+                  '[Slack] Error sending trigger notification reply:',
+                  err,
+                );
               }
             }
           }
@@ -493,7 +566,10 @@ export class StockRecordsService {
   }
 }
 
-async function resolveChannelId(botToken: string, channelNameOrId: string): Promise<string> {
+async function resolveChannelId(
+  botToken: string,
+  channelNameOrId: string,
+): Promise<string> {
   const cleanName = channelNameOrId.replace(/^#/, '').trim();
 
   // If it already looks like a Channel ID (e.g., starts with C, G, D), return it directly
@@ -526,7 +602,7 @@ async function resolveChannelId(botToken: string, channelNameOrId: string): Prom
 
       const channels = result.channels || [];
       const found = channels.find(
-        (c: any) => c.name.toLowerCase() === cleanName.toLowerCase()
+        (c: any) => c.name.toLowerCase() === cleanName.toLowerCase(),
       );
       if (found) {
         return found.id;
