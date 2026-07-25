@@ -11,7 +11,7 @@ import { generateStockRecordPdf } from '../common/utils/pdf.util';
 
 @Injectable()
 export class StockRecordsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(
     createStockRecordDto: CreateStockRecordDto,
@@ -54,24 +54,23 @@ export class StockRecordsService {
 
       // 3. Create Stock Record Items
       for (const itemDto of items) {
-        const dbItem = dbItemMap.get(itemDto.itemId);
-        if (!dbItem) {
+        if (!dbItemMap.get(itemDto.itemId)) {
           throw new NotFoundException(
             `Item with ID ${itemDto.itemId} not found`,
           );
         }
-
-        await tx.stockRecordItem.create({
-          data: {
-            stockRecordId: stockRecord.id,
-            itemId: itemDto.itemId,
-            basicQuantity: itemDto.basicQuantity || 0,
-            secondaryQuantity: itemDto.secondaryQuantity || 0,
-            frontBasicQuantity: itemDto.frontBasicQuantity || 0,
-            frontSecondaryQuantity: itemDto.frontSecondaryQuantity || 0,
-          },
-        });
       }
+
+      await tx.stockRecordItem.createMany({
+        data: items.map((itemDto) => ({
+          stockRecordId: stockRecord.id,
+          itemId: itemDto.itemId,
+          basicQuantity: itemDto.basicQuantity || 0,
+          secondaryQuantity: itemDto.secondaryQuantity || 0,
+          frontBasicQuantity: itemDto.frontBasicQuantity || 0,
+          frontSecondaryQuantity: itemDto.frontSecondaryQuantity || 0,
+        })),
+      });
 
       // Fetch complete record to return
       return tx.stockRecord.findUnique({

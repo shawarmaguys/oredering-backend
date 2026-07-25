@@ -5,14 +5,14 @@ import { decryptToken } from '../common/utils/crypto.util';
 
 @Injectable()
 export class SchedulesService implements OnModuleInit {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   onModuleInit() {
     // Start interval to check schedules every minute
     // Align with the next minute boundary so it checks near the 00 second mark.
     const now = new Date();
     const delay = (60 - now.getSeconds()) * 1000;
-    
+
     setTimeout(() => {
       this.checkAndTriggerSchedules();
       setInterval(() => {
@@ -133,18 +133,14 @@ export class SchedulesService implements OnModuleInit {
         },
       });
 
-      // Create StockRecordItems with 0/placeholder quantities
-      for (const locItem of locationItems) {
-
-        await tx.stockRecordItem.create({
-          data: {
-            stockRecordId: stockRecord.id,
-            itemId: locItem.itemId,
-            basicQuantity: 0,
-            secondaryQuantity: 0,
-          },
-        });
-      }
+      await tx.stockRecordItem.createMany({
+        data: locationItems.map((locItem) => ({
+          stockRecordId: stockRecord.id,
+          itemId: locItem.itemId,
+          basicQuantity: 0,
+          secondaryQuantity: 0,
+        })),
+      });
 
       // 3. Send Slack Message if configured on both location and schedule
       let slackMessageTs: string | null = null;
