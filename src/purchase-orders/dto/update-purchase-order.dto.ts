@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsUUID, IsArray, ValidateNested, IsNumber, Min } from 'class-validator';
+import { IsNotEmpty, IsUUID, IsArray, ValidateNested, IsNumber, Min, IsString, IsOptional } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UpdatePurchaseOrderItemDto {
@@ -9,6 +9,10 @@ export class UpdatePurchaseOrderItemDto {
   @IsNumber()
   @Min(0)
   quantity: number;
+
+  @IsString()
+  @IsOptional()
+  displayUnitName?: string;
 }
 
 export class UpdatePurchaseOrderDto {
@@ -17,3 +21,4 @@ export class UpdatePurchaseOrderDto {
   @Type(() => UpdatePurchaseOrderItemDto)
   items: UpdatePurchaseOrderItemDto[];
 }
+

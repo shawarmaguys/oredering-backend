@@ -149,9 +149,13 @@ export class PurchaseOrdersService {
 
     return this.prisma.$transaction(async (tx) => {
       for (const itemDto of updatePurchaseOrderDto.items) {
+        const updateData: any = { quantity: itemDto.quantity };
+        if (itemDto.displayUnitName !== undefined) {
+          updateData.unitName = itemDto.displayUnitName;
+        }
         await tx.purchaseOrderItem.updateMany({
           where: { purchaseOrderId: id, itemId: itemDto.itemId },
-          data: { quantity: itemDto.quantity },
+          data: updateData,
         });
       }
 
