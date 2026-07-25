@@ -147,28 +147,35 @@ export class PurchaseOrdersService {
     if (!po) throw new NotFoundException(`Purchase order with ID ${id} not found`);
     if (po.status !== PurchaseOrderStatus.DRAFT) throw new BadRequestException('Can only update DRAFT purchase orders');
 
-    return this.prisma.$transaction(async (tx) => {
-      for (const itemDto of updatePurchaseOrderDto.items) {
-        const updateData: any = { quantity: itemDto.quantity };
-        if (itemDto.displayUnitName !== undefined) {
-          updateData.unitName = itemDto.displayUnitName;
-        }
-        await tx.purchaseOrderItem.updateMany({
-          where: { purchaseOrderId: id, itemId: itemDto.itemId },
-          data: updateData,
-        });
-      }
+    return this.prisma.$transaction(
+      async (tx) => {
+        await Promise.all(
+          updatePurchaseOrderDto.items.map((itemDto) => {
+            const updateData: any = { quantity: itemDto.quantity };
+            if (itemDto.displayUnitName !== undefined) {
+              updateData.unitName = itemDto.displayUnitName;
+            }
+            return tx.purchaseOrderItem.updateMany({
+              where: { purchaseOrderId: id, itemId: itemDto.itemId },
+              data: updateData,
+            });
+          }),
+        );
 
-      return tx.purchaseOrder.findUnique({
-        where: { id },
-        include: {
-          items: { include: { item: true } },
-          vendor: true,
-          location: true,
-          approver: { select: { id: true, fullName: true, email: true, role: true } },
-        },
-      });
-    });
+        return tx.purchaseOrder.findUnique({
+          where: { id },
+          include: {
+            items: { include: { item: true } },
+            vendor: true,
+            location: true,
+            approver: { select: { id: true, fullName: true, email: true, role: true } },
+          },
+        });
+      },
+      {
+        timeout: 15000,
+      },
+    );
   }
 
   async send(id: string, sendPurchaseOrderDto: SendPurchaseOrderDto, userId: string) {

@@ -282,7 +282,7 @@ export class StockRecordsService {
               poItemsToCreate.push({
                 itemId: ri.itemId,
                 quantity: suggestedQty,
-                unitName: item.displayUnitName || 'pcs',
+                unitName: item.displayUnitName || item.baseUnitName,
                 basicQuantity: totalBasic,
                 secondaryQuantity: totalSec,
                 normalizedQuantity: roundedNormalized,

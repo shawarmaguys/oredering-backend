@@ -92,13 +92,14 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
         basicQuantity: number,
         displayUnit: string,
         baseUnit: string,
-        isSameUnit: boolean,
       ) => {
-        if (isSameUnit) {
-          return `${formatQtyNumber(secondaryQuantity + basicQuantity)} ${displayUnit}`;
+        if (baseUnit && displayUnit) {
+          return `${formatQtyNumber(secondaryQuantity)} ${displayUnit}\n+ ${formatQtyNumber(basicQuantity)} ${baseUnit}`;
         }
-
-        return `${formatQtyNumber(secondaryQuantity)} ${displayUnit}\n+ ${formatQtyNumber(basicQuantity)} ${baseUnit}`;
+        if (baseUnit) {
+          return `${formatQtyNumber(basicQuantity)} ${baseUnit}`;
+        }
+        return '';
       };
       const drawStockTableHeader = (headerY: number) => {
         doc.rect(tableX, headerY, tableWidth, 24).fill(tableHeaderBg);
@@ -132,9 +133,8 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
 
       for (const recordItem of record.items || []) {
         const item = recordItem.item || {};
-        const displayUnit = item.displayUnitName || 'pcs';
-        const baseUnit = item.baseUnitName || displayUnit;
-        const isSameUnit = baseUnit.toLowerCase() === displayUnit.toLowerCase() || Number(item.multiplier) === 1;
+        const displayUnit = item.displayUnitName;
+        const baseUnit = item.baseUnitName;
 
         const code = item.productCode || 'N/A';
         const name = item.displayName || 'Unknown Item';
@@ -150,15 +150,19 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
         const totalSec = Math.floor(totalBasicUnits / multiplier);
         const totalBasic = totalBasicUnits - (totalSec * multiplier);
 
-        const bohQty = formatCount(backSec, backBasic, displayUnit, baseUnit, isSameUnit);
-        const fohQty = formatCount(frontSec, frontBasic, displayUnit, baseUnit, isSameUnit);
-        const totalQty = isSameUnit
-          ? `${formatQtyNumber(totalBasicUnits)} ${displayUnit}`
-          : formatCount(totalSec, totalBasic, displayUnit, baseUnit, false);
+        const bohQty = formatCount(backSec, backBasic, displayUnit, baseUnit);
+        const fohQty = formatCount(frontSec, frontBasic, displayUnit, baseUnit);
+
+        let totalQty;
+        if (displayUnit) {
+          totalQty = formatCount(totalSec, totalBasic, displayUnit, baseUnit);
+        } else {
+          totalQty = `${formatQtyNumber(totalBasicUnits)} ${baseUnit}`;
+        }
 
         const nameHeight = doc.heightOfString(name, { width: 145 });
         const quantityHeight = doc.heightOfString(totalQty, { width: 95, align: 'right' });
-        const rowHeight = Math.max(isSameUnit ? 18 : 28, nameHeight + 6, quantityHeight + 6);
+        const rowHeight = Math.max(displayUnit ? 28 : 18, nameHeight + 6, quantityHeight + 6);
 
         // Page breaking logic
         if (y + rowHeight > doc.page.height - 60) {
@@ -413,7 +417,9 @@ export async function generatePurchaseOrderPdf(po: any): Promise<Buffer> {
       doc.font('Helvetica').fontSize(9);
       let isAltRow = false;
 
-      for (const poItem of po.items || []) {
+      const activeItems = (po.items || []).filter((poItem: any) => Number(poItem.quantity || 0) > 0);
+
+      for (const poItem of activeItems) {
         // Page breaking logic
         if (y > doc.page.height - 80) {
           doc.addPage();
@@ -437,7 +443,7 @@ export async function generatePurchaseOrderPdf(po: any): Promise<Buffer> {
         const item = poItem.item || {};
         const code = item.productCode || 'N/A';
         const name = item.displayName || 'Unknown Item';
-        const unit = poItem.unitName || 'pcs';
+        const unit = poItem.unitName;
         const quantity = Number(poItem.quantity || 0).toFixed(0);
 
         // Row background shading
