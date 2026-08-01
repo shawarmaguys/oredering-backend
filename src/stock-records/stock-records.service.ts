@@ -8,6 +8,7 @@ import { CreateStockRecordDto } from './dto/create-stock-record.dto';
 import { CompleteStockRecordDto } from './dto/complete-stock-record.dto';
 import { decryptToken } from '../common/utils/crypto.util';
 import { generateStockRecordPdf } from '../common/utils/pdf.util';
+import { resolveChannelId } from '../common/utils/slack.util';
 
 @Injectable()
 export class StockRecordsService {
@@ -101,11 +102,6 @@ export class StockRecordsService {
     return this.prisma.stockRecord.findMany({
       where,
       include: {
-        items: {
-          include: {
-            item: true,
-          },
-        },
         location: true,
       },
       orderBy: { submittedAt: 'desc' },
@@ -563,56 +559,4 @@ export class StockRecordsService {
 
     return completedRecord;
   }
-}
-
-async function resolveChannelId(
-  botToken: string,
-  channelNameOrId: string,
-): Promise<string> {
-  const cleanName = channelNameOrId.replace(/^#/, '').trim();
-
-  // If it already looks like a Channel ID (e.g., starts with C, G, D), return it directly
-  if (/^[CGD][A-Z0-9]{8,}$/i.test(cleanName)) {
-    return cleanName;
-  }
-
-  try {
-    let cursor: string | undefined = undefined;
-    do {
-      const url = new URL('https://slack.com/api/conversations.list');
-      url.searchParams.append('types', 'public_channel,private_channel');
-      url.searchParams.append('limit', '200');
-      if (cursor) {
-        url.searchParams.append('cursor', cursor);
-      }
-
-      const response = await fetch(url.toString(), {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${botToken}`,
-        },
-      });
-
-      const result: any = await response.json();
-      if (!result.ok) {
-        console.error('[Slack] conversations.list failed:', result.error);
-        break;
-      }
-
-      const channels = result.channels || [];
-      const found = channels.find(
-        (c: any) => c.name.toLowerCase() === cleanName.toLowerCase(),
-      );
-      if (found) {
-        return found.id;
-      }
-
-      cursor = result.response_metadata?.next_cursor;
-    } while (cursor);
-  } catch (err) {
-    console.error('[Slack] Error in resolveChannelId:', err);
-  }
-
-  // Fallback to the original value if not found
-  return channelNameOrId;
 }

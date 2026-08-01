@@ -20,6 +20,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserRole } from '@prisma/client';
+import { createRateLimitGuard } from '../common/guards/rate-limit.guard';
 
 @Controller('stock-records')
 @UseInterceptors(CacheInterceptor)
@@ -27,6 +28,7 @@ export class StockRecordsController {
   constructor(private readonly stockRecordsService: StockRecordsService) { }
 
   @Post()
+  @UseGuards(createRateLimitGuard({ windowMs: 60000, max: 10 }))
   @HttpCode(HttpStatus.CREATED)
   async create(
     @Body() createStockRecordDto: CreateStockRecordDto,
@@ -48,6 +50,7 @@ export class StockRecordsController {
   }
 
   @Patch(':id/complete')
+  @UseGuards(createRateLimitGuard({ windowMs: 60000, max: 10 }))
   @HttpCode(HttpStatus.OK)
   async complete(
     @Param('id', ParseUUIDPipe) id: string,

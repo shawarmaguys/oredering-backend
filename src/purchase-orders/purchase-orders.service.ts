@@ -6,6 +6,7 @@ import { SendPurchaseOrderDto } from './dto/send-purchase-order.dto';
 import { PurchaseOrderStatus } from '@prisma/client';
 import { generatePurchaseOrderPdf } from '../common/utils/pdf.util';
 import { decryptToken } from '../common/utils/crypto.util';
+import { resolveChannelId, uploadPdfToSlackThread } from '../common/utils/slack.util';
 
 @Injectable()
 export class PurchaseOrdersService {
@@ -65,10 +66,20 @@ export class PurchaseOrdersService {
 
     return this.prisma.purchaseOrder.findMany({
       where,
-      include: {
-        items: { include: { item: true } },
-        vendor: true,
-        location: true,
+      select: {
+        id: true,
+        vendorId: true,
+        vendor: { select: { id: true, displayName: true, email: true } },
+        locationId: true,
+        location: { select: { id: true, name: true } },
+        stockRecordId: true,
+        createdBy: true,
+        approvedBy: true,
+        status: true,
+        notes: true,
+        emailsSent: true,
+        createdAt: true,
+        approvedAt: true,
         approver: { select: { id: true, fullName: true, email: true, role: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -308,69 +319,4 @@ export class PurchaseOrdersService {
 
     return { success: true, message: 'Purchase Order send queued.' };
   }
-}
-
-async function uploadPdfToSlackThread(
-  botToken: string,
-  channelId: string,
-  threadTs: string,
-  pdfBuffer: Buffer,
-  fileName: string,
-  message: string,
-): Promise<any> {
-  const urlEncodedBody = new URLSearchParams();
-  urlEncodedBody.append('filename', fileName);
-  urlEncodedBody.append('length', pdfBuffer.length.toString());
-
-  const getUrlResponse = await fetch('https://slack.com/api/files.getUploadURLExternal', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${botToken}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: urlEncodedBody.toString(),
-  });
-
-  const getUrlResult: any = await getUrlResponse.json();
-  if (!getUrlResult.ok) throw new Error(`getUploadURLExternal failed: ${getUrlResult.error}`);
-
-  const { upload_url, file_id } = getUrlResult;
-
-  const uploadFileResponse = await fetch(upload_url, { method: 'POST', body: new Uint8Array(pdfBuffer) });
-  if (!uploadFileResponse.ok) throw new Error(`Binary upload failed with status: ${uploadFileResponse.status}`);
-
-  const completeResponse = await fetch('https://slack.com/api/files.completeUploadExternal', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${botToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ files: [{ id: file_id, title: fileName }], channel_id: channelId, thread_ts: threadTs, initial_comment: message }),
-  });
-
-  const completeResult: any = await completeResponse.json();
-  if (!completeResult.ok) throw new Error(`completeUploadExternal failed: ${completeResult.error}`);
-  return completeResult;
-}
-
-async function resolveChannelId(botToken: string, channelNameOrId: string): Promise<string> {
-  const cleanName = channelNameOrId.replace(/^#/, '').trim();
-  if (/^[CGD][A-Z0-9]{8,}$/i.test(cleanName)) return cleanName;
-
-  try {
-    let cursor: string | undefined = undefined;
-    do {
-      const url = new URL('https://slack.com/api/conversations.list');
-      url.searchParams.append('types', 'public_channel,private_channel');
-      url.searchParams.append('limit', '200');
-      if (cursor) url.searchParams.append('cursor', cursor);
-
-      const response = await fetch(url.toString(), { method: 'GET', headers: { Authorization: `Bearer ${botToken}` } });
-      const result: any = await response.json();
-      if (!result.ok) { console.error('[Slack] conversations.list failed:', result.error); break; }
-
-      const found = (result.channels || []).find((c: any) => c.name.toLowerCase() === cleanName.toLowerCase());
-      if (found) return found.id;
-
-      cursor = result.response_metadata?.next_cursor;
-    } while (cursor);
-  } catch (err) {
-    console.error('[Slack] Error in resolveChannelId:', err);
-  }
-
-  return channelNameOrId;
 }
