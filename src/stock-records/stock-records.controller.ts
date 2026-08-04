@@ -10,6 +10,7 @@ import {
   HttpStatus,
   ParseUUIDPipe,
   UseInterceptors,
+  Query,
 } from '@nestjs/common';
 import { CacheInterceptor } from '@nestjs/cache-manager';
 import { StockRecordsService } from './stock-records.service';

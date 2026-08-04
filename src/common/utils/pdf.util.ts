@@ -160,9 +160,16 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
           totalQty = `${formatQtyNumber(totalBasicUnits)} ${baseUnit}`;
         }
 
+        doc.font('Helvetica').fontSize(8);
+        const codeHeight = doc.heightOfString(code, { width: 65 });
         const nameHeight = doc.heightOfString(name, { width: 145 });
-        const quantityHeight = doc.heightOfString(totalQty, { width: 95, align: 'right' });
-        const rowHeight = Math.max(displayUnit ? 28 : 18, nameHeight + 6, quantityHeight + 6);
+        const bohHeight = doc.heightOfString(bohQty, { width: 60, align: 'right' });
+        const fohHeight = doc.heightOfString(fohQty, { width: 60, align: 'right' });
+        doc.font('Helvetica-Bold').fontSize(8);
+        const totalHeight = doc.heightOfString(totalQty, { width: 95, align: 'right' });
+
+        const maxContentHeight = Math.max(codeHeight, nameHeight, bohHeight, fohHeight, totalHeight);
+        const rowHeight = Math.max(displayUnit ? 28 : 18, maxContentHeight + 8);
 
         // Page breaking logic
         if (y + rowHeight > doc.page.height - 60) {
@@ -399,18 +406,34 @@ export async function generatePurchaseOrderPdf(po: any): Promise<Buffer> {
         y += doc.heightOfString(po.emailsSent, { width: doc.page.width - 180 }) + 5;
       }
 
+      const tableX = 50;
+      const tableWidth = doc.page.width - 100;
+      const tableRight = tableX + tableWidth;
+      const columnDividers = [150, 380, 480];
+      const rowDividerXs = [tableX, ...columnDividers, tableRight];
+
+      const drawPoTableHeader = (headerY: number) => {
+        doc.rect(tableX, headerY, tableWidth, 24).fill(tableHeaderBg);
+        doc.rect(tableX, headerY, tableWidth, 24).strokeColor(borderGray).lineWidth(1).stroke();
+
+        for (const dividerX of columnDividers) {
+          doc.moveTo(dividerX, headerY)
+            .lineTo(dividerX, headerY + 24)
+            .strokeColor(borderGray)
+            .lineWidth(0.5)
+            .stroke();
+        }
+
+        doc.fillColor(textColor).font('Helvetica-Bold').fontSize(9);
+        doc.text('Product Code', 60, headerY + 7, { width: 85 });
+        doc.text('Item Name', 160, headerY + 7, { width: 210 });
+        doc.text('Ordering Unit', 390, headerY + 7, { width: 85 });
+        doc.text('Order Quantity', 490, headerY + 7, { width: 65, align: 'right' });
+      };
+
       // Table Border Header
       y += 30;
-      doc.rect(50, y, doc.page.width - 100, 24).fill(tableHeaderBg);
-      doc.rect(50, y, doc.page.width - 100, 24).strokeColor(borderGray).lineWidth(1).stroke();
-
-      // Table Column Titles
-      doc.fillColor(textColor).font('Helvetica-Bold').fontSize(9);
-      doc.text('Product Code', 60, y + 7, { width: 90 });
-      doc.text('Item Name', 160, y + 7, { width: 220 });
-      doc.text('Ordering Unit', 390, y + 7, { width: 90 });
-      doc.text('Order Quantity', 490, y + 7, { width: 70, align: 'right' });
-
+      drawPoTableHeader(y);
       y += 24;
 
       // Table Rows
@@ -420,51 +443,62 @@ export async function generatePurchaseOrderPdf(po: any): Promise<Buffer> {
       const activeItems = (po.items || []).filter((poItem: any) => Number(poItem.quantity || 0) > 0);
 
       for (const poItem of activeItems) {
-        // Page breaking logic
-        if (y > doc.page.height - 80) {
+        const item = poItem.item || {};
+        const code = item.productCode || 'N/A';
+        const name = item.displayName || 'Unknown Item';
+        const unit = poItem.unitName || item.displayUnitName || item.baseUnitName || '';
+        const quantity = Number(poItem.quantity || 0).toFixed(0);
+
+        // Calculate dynamic row height based on content
+        doc.font('Helvetica').fontSize(9);
+        const codeHeight = doc.heightOfString(code, { width: 85 });
+        const nameHeight = doc.heightOfString(name, { width: 210 });
+        const unitHeight = doc.heightOfString(unit, { width: 85 });
+        const quantityHeight = doc.heightOfString(quantity, { width: 65, align: 'right' });
+
+        const maxContentHeight = Math.max(codeHeight, nameHeight, unitHeight, quantityHeight);
+        const rowHeight = Math.max(22, maxContentHeight + 10);
+
+        // Page breaking logic using dynamic rowHeight
+        if (y + rowHeight > doc.page.height - 60) {
           doc.addPage();
           doc.rect(0, 0, doc.page.width, 15).fill(primaryColor);
 
           y = 40;
-
-          doc.rect(50, y, doc.page.width - 100, 24).fill(tableHeaderBg);
-          doc.rect(50, y, doc.page.width - 100, 24).strokeColor(borderGray).lineWidth(1).stroke();
-
-          doc.fillColor(textColor).font('Helvetica-Bold').fontSize(9);
-          doc.text('Product Code', 60, y + 7, { width: 90 });
-          doc.text('Item Name', 160, y + 7, { width: 220 });
-          doc.text('Ordering Unit', 390, y + 7, { width: 90 });
-          doc.text('Order Quantity', 490, y + 7, { width: 70, align: 'right' });
-
+          drawPoTableHeader(y);
           y += 24;
           doc.font('Helvetica').fontSize(9);
         }
 
-        const item = poItem.item || {};
-        const code = item.productCode || 'N/A';
-        const name = item.displayName || 'Unknown Item';
-        const unit = poItem.unitName;
-        const quantity = Number(poItem.quantity || 0).toFixed(0);
-
         // Row background shading
         if (isAltRow) {
-          doc.rect(50, y, doc.page.width - 100, 22).fill('#fafafa');
+          doc.rect(tableX, y, tableWidth, rowHeight).fill('#fafafa');
         }
 
-        doc.fillColor(textColor);
-        doc.text(code, 60, y + 6, { width: 90 });
-        doc.text(name, 160, y + 6, { width: 220 });
-        doc.text(unit, 390, y + 6, { width: 90 });
-        doc.text(quantity, 490, y + 6, { width: 70, align: 'right' });
+        // Column vertical dividers
+        for (const dividerX of rowDividerXs) {
+          doc.moveTo(dividerX, y)
+            .lineTo(dividerX, y + rowHeight)
+            .strokeColor(borderGray)
+            .lineWidth(0.5)
+            .stroke();
+        }
+
+        const textY = y + 5;
+        doc.fillColor(textColor).font('Helvetica').fontSize(9);
+        doc.text(code, 60, textY, { width: 85 });
+        doc.text(name, 160, textY, { width: 210 });
+        doc.text(unit, 390, textY, { width: 85 });
+        doc.text(quantity, 490, textY, { width: 65, align: 'right' });
 
         // Draw row bottom border line
-        doc.moveTo(50, y + 22)
-          .lineTo(doc.page.width - 50, y + 22)
+        doc.moveTo(tableX, y + rowHeight)
+          .lineTo(tableRight, y + rowHeight)
           .strokeColor(borderGray)
           .lineWidth(0.5)
           .stroke();
 
-        y += 22;
+        y += rowHeight;
         isAltRow = !isAltRow;
       }
 
