@@ -86,7 +86,7 @@ export class SchedulesService implements OnModuleInit {
   async findAll() {
     return this.prisma.schedule.findMany({
       include: {
-        location: true,
+        location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
         vendor: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -113,7 +113,7 @@ export class SchedulesService implements OnModuleInit {
       where: { id },
       data: updateScheduleDto,
       include: {
-        location: true,
+        location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
         vendor: true,
       },
     });
@@ -237,7 +237,7 @@ export class SchedulesService implements OnModuleInit {
               item: true,
             },
           },
-          location: true,
+          location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
         },
       });
     });

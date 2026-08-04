@@ -82,7 +82,7 @@ export class StockRecordsService {
               item: true,
             },
           },
-          location: true,
+          location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
         },
       });
     });
@@ -102,7 +102,7 @@ export class StockRecordsService {
     return this.prisma.stockRecord.findMany({
       where,
       include: {
-        location: true,
+        location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
       },
       orderBy: { submittedAt: 'desc' },
     });
@@ -117,7 +117,7 @@ export class StockRecordsService {
             item: true,
           },
         },
-        location: true,
+        location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
       },
     });
 
@@ -192,7 +192,7 @@ export class StockRecordsService {
               item: true,
             },
           },
-          location: true,
+          location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
         },
       });
     });

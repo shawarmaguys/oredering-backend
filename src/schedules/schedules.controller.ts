@@ -10,7 +10,6 @@ import { UserRole } from '@prisma/client';
 
 @Controller('schedules')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@UseInterceptors(CacheInterceptor)
 export class SchedulesController {
   constructor(private readonly schedulesService: SchedulesService) {}
 

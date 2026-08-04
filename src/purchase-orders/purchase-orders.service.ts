@@ -50,7 +50,7 @@ export class PurchaseOrdersService {
 
       return tx.purchaseOrder.findUnique({
         where: { id: po.id },
-        include: { items: { include: { item: true } }, vendor: true, location: true },
+        include: { items: { include: { item: true } }, vendor: true, location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } } },
       });
     });
   }
@@ -92,7 +92,7 @@ export class PurchaseOrdersService {
       include: {
         items: { include: { item: true } },
         vendor: true,
-        location: true,
+        location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
         approver: { select: { id: true, fullName: true, email: true, role: true } },
       },
     });
@@ -112,7 +112,7 @@ export class PurchaseOrdersService {
       include: {
         items: { include: { item: true } },
         vendor: { include: { department: true } },
-        location: true,
+        location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
         stockRecord: true,
         approver: { select: { id: true, fullName: true, email: true, role: true } },
       },
@@ -121,7 +121,8 @@ export class PurchaseOrdersService {
     // Post Slack Thread Reply if there's an associated stock record
     void (async () => {
       try {
-        const botToken = decryptToken(updatedPo.location?.slackBotToken);
+        const loc = await this.prisma.location.findUnique({ where: { id: updatedPo.locationId } });
+        const botToken = decryptToken(loc?.slackBotToken);
         const stockRecord = updatedPo.stockRecord;
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
 
@@ -178,7 +179,7 @@ export class PurchaseOrdersService {
           include: {
             items: { include: { item: true } },
             vendor: true,
-            location: true,
+            location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
             approver: { select: { id: true, fullName: true, email: true, role: true } },
           },
         });
@@ -195,7 +196,7 @@ export class PurchaseOrdersService {
       include: {
         items: { include: { item: true } },
         vendor: { include: { department: true } },
-        location: true,
+        location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
         stockRecord: true,
         approver: { select: { id: true, fullName: true, email: true, role: true } },
       },
@@ -273,7 +274,8 @@ export class PurchaseOrdersService {
           const responseText = await response.text();
           console.log('Google Script Email Response:', responseText);
 
-          const botToken = decryptToken(po.location?.slackBotToken);
+          const loc = await this.prisma.location.findUnique({ where: { id: po.locationId } });
+          const botToken = decryptToken(loc?.slackBotToken);
           const stockRecord = po.stockRecord;
 
           if (botToken && stockRecord) {
