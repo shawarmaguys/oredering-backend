@@ -36,8 +36,8 @@ export class LocationsService {
     
     return locations.map(loc => ({
       ...loc,
-      slackBotToken: decryptToken(loc.slackBotToken),
-      slackUserToken: decryptToken(loc.slackUserToken)
+      slackBotToken: loc.slackBotToken ? '••••••••' : '',
+      slackUserToken: loc.slackUserToken ? '••••••••' : '',
     }));
   }
 
@@ -53,16 +53,18 @@ export class LocationsService {
       }
     }
 
+    const data: any = { name, address, phone, email };
+
+    if (slackBotToken !== undefined && slackBotToken !== '••••••••') {
+      data.slackBotToken = encryptToken(slackBotToken);
+    }
+    if (slackUserToken !== undefined && slackUserToken !== '••••••••') {
+      data.slackUserToken = encryptToken(slackUserToken);
+    }
+
     return this.prisma.location.update({
       where: { id },
-      data: { 
-        name, 
-        address, 
-        phone, 
-        email, 
-        slackBotToken: slackBotToken !== undefined ? encryptToken(slackBotToken) : undefined, 
-        slackUserToken: slackUserToken !== undefined ? encryptToken(slackUserToken) : undefined 
-      },
+      data,
     });
   }
 

@@ -43,8 +43,15 @@ export class PurchaseOrdersController {
   async findAll(
     @CurrentUser() user: any,
     @Query('status') status?: PurchaseOrderStatus,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.purchaseOrdersService.findAll(user, status);
+    return this.purchaseOrdersService.findAll(
+      user,
+      status,
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 25,
+    );
   }
 
   @Get(':id')

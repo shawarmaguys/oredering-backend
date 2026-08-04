@@ -88,8 +88,9 @@ export class StockRecordsService {
     });
   }
 
-  async findAll(user: any) {
+  async findAll(user: any, page = 1, limit = 25) {
     const where: any = {};
+    const skip = (page - 1) * limit;
 
     if (user.role !== 'ADMIN') {
       const userLocs = await this.prisma.userLocation.findMany({
@@ -99,13 +100,26 @@ export class StockRecordsService {
       where.locationId = { in: locationIds };
     }
 
-    return this.prisma.stockRecord.findMany({
-      where,
-      include: {
-        location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
-      },
-      orderBy: { submittedAt: 'desc' },
-    });
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.stockRecord.findMany({
+        where,
+        include: {
+          location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
+        },
+        orderBy: { submittedAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.stockRecord.count({ where }),
+    ]);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async findOne(id: string) {

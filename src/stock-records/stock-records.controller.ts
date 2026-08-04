@@ -40,8 +40,16 @@ export class StockRecordsController {
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.WORKER, UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
-  async findAll(@CurrentUser() user: any) {
-    return this.stockRecordsService.findAll(user);
+  async findAll(
+    @CurrentUser() user: any,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.stockRecordsService.findAll(
+      user,
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 25,
+    );
   }
 
   @Get(':id')

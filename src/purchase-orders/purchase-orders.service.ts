@@ -40,13 +40,25 @@ export class PurchaseOrdersService {
         data: { vendorId, locationId, stockRecordId, notes: notes ?? '', createdBy: creatorName, status: PurchaseOrderStatus.DRAFT },
       });
 
+      // Batch-fetch all items to avoid N+1 queries inside the transaction
+      const itemIds = items.map((i) => i.itemId);
+      const dbItems = await tx.item.findMany({ where: { id: { in: itemIds } } });
+      const dbItemMap = new Map(dbItems.map((item) => [item.id, item]));
+
       for (const itemDto of items) {
-        const item = await tx.item.findUnique({ where: { id: itemDto.itemId } });
-        if (!item) throw new NotFoundException(`Item with ID ${itemDto.itemId} not found`);
-        await tx.purchaseOrderItem.create({
-          data: { purchaseOrderId: po.id, itemId: itemDto.itemId, quantity: itemDto.quantity, unitName: itemDto.unitName },
-        });
+        if (!dbItemMap.has(itemDto.itemId)) {
+          throw new NotFoundException(`Item with ID ${itemDto.itemId} not found`);
+        }
       }
+
+      await tx.purchaseOrderItem.createMany({
+        data: items.map((itemDto) => ({
+          purchaseOrderId: po.id,
+          itemId: itemDto.itemId,
+          quantity: itemDto.quantity,
+          unitName: itemDto.unitName,
+        })),
+      });
 
       return tx.purchaseOrder.findUnique({
         where: { id: po.id },
@@ -55,7 +67,7 @@ export class PurchaseOrdersService {
     });
   }
 
-  async findAll(user: any, status?: PurchaseOrderStatus) {
+  async findAll(user: any, status?: PurchaseOrderStatus, page = 1, limit = 25) {
     const where: any = {};
     if (status) where.status = status;
 
@@ -64,26 +76,41 @@ export class PurchaseOrdersService {
       where.locationId = { in: userLocs.map((ul) => ul.locationId) };
     }
 
-    return this.prisma.purchaseOrder.findMany({
-      where,
-      select: {
-        id: true,
-        vendorId: true,
-        vendor: { select: { id: true, displayName: true, email: true } },
-        locationId: true,
-        location: { select: { id: true, name: true } },
-        stockRecordId: true,
-        createdBy: true,
-        approvedBy: true,
-        status: true,
-        notes: true,
-        emailsSent: true,
-        createdAt: true,
-        approvedAt: true,
-        approver: { select: { id: true, fullName: true, email: true, role: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.purchaseOrder.findMany({
+        where,
+        select: {
+          id: true,
+          vendorId: true,
+          vendor: { select: { id: true, displayName: true, email: true } },
+          locationId: true,
+          location: { select: { id: true, name: true } },
+          stockRecordId: true,
+          createdBy: true,
+          approvedBy: true,
+          status: true,
+          notes: true,
+          emailsSent: true,
+          createdAt: true,
+          approvedAt: true,
+          approver: { select: { id: true, fullName: true, email: true, role: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.purchaseOrder.count({ where }),
+    ]);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async findOne(id: string) {
