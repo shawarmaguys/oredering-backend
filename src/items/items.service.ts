@@ -36,17 +36,42 @@ export class ItemsService {
     });
   }
 
-  async findAll(vendorId?: string) {
-    return this.prisma.item.findMany({
-      where: {
-        isActive: true,
-        ...(vendorId ? { vendorId } : {}),
-      },
-      include: {
-        vendor: true,
-      },
-      orderBy: { displayName: 'asc' },
-    });
+  async findAll(options: {
+    vendorId?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  } = {}) {
+    const { vendorId, search, page = 1, limit = 50 } = options;
+    const skip = (page - 1) * limit;
+
+    const where: any = { isActive: true };
+    if (vendorId) where.vendorId = vendorId;
+    if (search) {
+      where.OR = [
+        { displayName: { contains: search, mode: 'insensitive' } },
+        { productCode: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.item.findMany({
+        where,
+        include: { vendor: true },
+        orderBy: { displayName: 'asc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.item.count({ where }),
+    ]);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async update(id: string, updateItemDto: any) {

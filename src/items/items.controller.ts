@@ -35,8 +35,18 @@ export class ItemsController {
   }
 
   @Get()
-  async findAll(@Query('vendor_id') vendorId?: string) {
-    return this.itemsService.findAll(vendorId);
+  async findAll(
+    @Query('vendor_id') vendorId?: string,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.itemsService.findAll({
+      vendorId,
+      search,
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 50,
+    });
   }
 
   @Patch(':id')
