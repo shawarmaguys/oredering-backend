@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Body, Param, UseGuards, HttpCode, HttpStatus, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, HttpCode, HttpStatus, UseInterceptors } from '@nestjs/common';
 import { CacheInterceptor } from '@nestjs/cache-manager';
 import { SchedulesService } from './schedules.service';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
+import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -24,6 +25,23 @@ export class SchedulesController {
   @Roles(UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
   async findAll() {
     return this.schedulesService.findAll();
+  }
+
+  @Put(':id')
+  @Roles(UserRole.SUPER_MANAGER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async update(
+    @Param('id') id: string,
+    @Body() updateScheduleDto: UpdateScheduleDto,
+  ) {
+    return this.schedulesService.update(id, updateScheduleDto);
+  }
+
+  @Delete(':id')
+  @Roles(UserRole.SUPER_MANAGER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async remove(@Param('id') id: string) {
+    return this.schedulesService.remove(id);
   }
 
   @Post(':id/trigger')

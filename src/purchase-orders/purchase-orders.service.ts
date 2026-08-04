@@ -37,7 +37,7 @@ export class PurchaseOrdersService {
 
     return this.prisma.$transaction(async (tx) => {
       const po = await tx.purchaseOrder.create({
-        data: { vendorId, locationId, stockRecordId, notes, createdBy: creatorName, status: PurchaseOrderStatus.DRAFT },
+        data: { vendorId, locationId, stockRecordId, notes: notes ?? '', createdBy: creatorName, status: PurchaseOrderStatus.DRAFT },
       });
 
       for (const itemDto of items) {

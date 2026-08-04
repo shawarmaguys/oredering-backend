@@ -138,4 +138,19 @@ export class TranslationsService implements OnModuleInit {
       orderBy: { id: 'asc' },
     });
   }
+
+  async translateText(text: string) {
+    if (!text || !text.trim()) {
+      return { success: false, original: text || '', translated: '' };
+    }
+    const serviceUrl = process.env.EMAIL_SERVICE_URL || 'https://script.google.com/macros/s/AKfycbxpaGZFsFf8NZu7J-jRKhL_o55Dkcper4MsJgvUR9pmBOqlax9372k6Rr6qwjdyqafv/exec';
+    try {
+      const response = await fetch(`${serviceUrl}?text=${encodeURIComponent(text.trim())}`);
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      console.error('Translation service error:', error);
+      return { success: false, original: text, translated: '', error: error.message };
+    }
+  }
 }

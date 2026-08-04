@@ -93,6 +93,40 @@ export class SchedulesService implements OnModuleInit {
     });
   }
 
+  async update(id: string, updateScheduleDto: any) {
+    const schedule = await this.prisma.schedule.findUnique({ where: { id } });
+    if (!schedule) {
+      throw new NotFoundException(`Schedule with ID ${id} not found`);
+    }
+
+    if (updateScheduleDto.locationId) {
+      const location = await this.prisma.location.findUnique({ where: { id: updateScheduleDto.locationId } });
+      if (!location) throw new NotFoundException(`Location with ID ${updateScheduleDto.locationId} not found`);
+    }
+
+    if (updateScheduleDto.vendorId) {
+      const vendor = await this.prisma.vendor.findUnique({ where: { id: updateScheduleDto.vendorId } });
+      if (!vendor) throw new NotFoundException(`Vendor with ID ${updateScheduleDto.vendorId} not found`);
+    }
+
+    return this.prisma.schedule.update({
+      where: { id },
+      data: updateScheduleDto,
+      include: {
+        location: true,
+        vendor: true,
+      },
+    });
+  }
+
+  async remove(id: string) {
+    const schedule = await this.prisma.schedule.findUnique({ where: { id } });
+    if (!schedule) {
+      throw new NotFoundException(`Schedule with ID ${id} not found`);
+    }
+    return this.prisma.schedule.delete({ where: { id } });
+  }
+
   async trigger(id: string) {
     const schedule = await this.prisma.schedule.findUnique({
       where: { id },

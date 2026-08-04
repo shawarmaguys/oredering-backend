@@ -28,5 +28,9 @@ export class UpdateItemDto {
 
   @IsString()
   @IsOptional()
+  spanishName?: string;
+
+  @IsString()
+  @IsOptional()
   note?: string;
 }

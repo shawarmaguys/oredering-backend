@@ -296,7 +296,7 @@ export class StockRecordsService {
                   stockRecordId: id,
                   createdBy: submittedByName,
                   status: 'DRAFT',
-                  notes: `Auto-drafted from Stock Audit Count #${id.slice(0, 8)}`,
+                  notes: '',
                   items: {
                     create: poItemsToCreate,
                   },

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { TranslationsService } from './translations.service';
 import { CreateTranslationDto } from './dto/create-translation.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -21,5 +21,10 @@ export class TranslationsController {
   @Get()
   async findAll() {
     return this.translationsService.findAll();
+  }
+
+  @Get('translate')
+  async translate(@Query('text') text: string) {
+    return this.translationsService.translateText(text);
   }
 }

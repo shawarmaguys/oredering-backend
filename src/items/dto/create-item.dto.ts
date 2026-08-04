@@ -28,5 +28,9 @@ export class CreateItemDto {
 
   @IsString()
   @IsOptional()
+  spanishName?: string;
+
+  @IsString()
+  @IsOptional()
   note?: string;
 }
