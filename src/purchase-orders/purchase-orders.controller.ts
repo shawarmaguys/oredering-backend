@@ -10,8 +10,11 @@ import {
   HttpStatus,
   ParseUUIDPipe,
   UseInterceptors,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { CacheInterceptor } from '@nestjs/cache-manager';
+import { generatePurchaseOrderPdf } from '../common/utils/pdf.util';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto';
 import { UpdatePurchaseOrderDto } from './dto/update-purchase-order.dto';
@@ -58,6 +61,23 @@ export class PurchaseOrdersController {
   @Roles(UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.purchaseOrdersService.findOne(id);
+  }
+
+  @Get(':id/pdf')
+  @Roles(UserRole.WORKER, UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
+  async downloadPdf(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: any,
+  ) {
+    const po = await this.purchaseOrdersService.findOne(id);
+    const pdfBuffer = await generatePurchaseOrderPdf(po);
+    const shortId = po.id ? po.id.slice(0, 8).toUpperCase() : 'ORDER';
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="PurchaseOrder_${shortId}.pdf"`,
+      'Content-Length': pdfBuffer.length.toString(),
+    });
+    res.end(pdfBuffer);
   }
 
   @Post(':id')
