@@ -8,7 +8,7 @@ import { CreateStockRecordDto } from './dto/create-stock-record.dto';
 import { CompleteStockRecordDto } from './dto/complete-stock-record.dto';
 import { decryptToken } from '../common/utils/crypto.util';
 import { generateStockRecordPdf } from '../common/utils/pdf.util';
-import { resolveChannelId } from '../common/utils/slack.util';
+import { resolveChannelId, uploadPdfToSlackThread } from '../common/utils/slack.util';
 
 @Injectable()
 export class StockRecordsService {
@@ -211,39 +211,39 @@ export class StockRecordsService {
       });
     });
 
-    // 5. Generate and send PDF/Slack notifications in the background.
-    void (async () => {
-      try {
-        const fullRecord = await this.prisma.stockRecord.findUnique({
-          where: { id },
-          include: {
-            items: {
-              include: {
-                item: {
-                  include: {
-                    vendor: {
-                      include: {
-                        department: true,
-                      },
+    // 5. Generate and send PDF/Slack notifications & auto-draft PO
+    try {
+      const fullRecord = await this.prisma.stockRecord.findUnique({
+        where: { id },
+        include: {
+          items: {
+            include: {
+              item: {
+                include: {
+                  vendor: {
+                    include: {
+                      department: true,
                     },
                   },
                 },
               },
             },
-            location: true,
           },
-        });
+          location: true,
+        },
+      });
 
-        if (fullRecord) {
-          const firstItem = fullRecord.items?.[0]?.item;
-          const vendor = firstItem?.vendor;
-          const department = vendor?.department;
-          const vendorName = vendor?.displayName || 'Unknown Vendor';
+      if (fullRecord) {
+        const firstItem = fullRecord.items?.[0]?.item;
+        const vendor = firstItem?.vendor;
+        const department = vendor?.department;
+        const vendorName = vendor?.displayName || 'Unknown Vendor';
 
-          let createdPoId: string | null = null;
+        let createdPoId: string | null = null;
 
-          // Draft or update purchase order
-          if (vendor) {
+        // Draft or update purchase order
+        if (vendor) {
+          try {
             const existingPo = await this.prisma.purchaseOrder.findFirst({
               where: { stockRecordId: id },
             });
@@ -318,7 +318,6 @@ export class StockRecordsService {
               });
               createdPoId = po.id;
             } else {
-              console.log('Checking status of PO:', existingPo.status);
               // Only update if it's still in DRAFT
               if (existingPo.status === 'DRAFT') {
                 // Delete existing items
@@ -336,240 +335,159 @@ export class StockRecordsService {
               }
               createdPoId = existingPo.id;
             }
+          } catch (poErr) {
+            console.error('[StockRecordsService] Error drafting purchase order:', poErr);
           }
+        }
 
-          const botToken = decryptToken(fullRecord.location?.slackBotToken);
-          const slackChannel = department?.slackChannel;
+        const botToken = decryptToken(fullRecord.location?.slackBotToken);
 
-          if (botToken && slackChannel) {
-            const resolvedChannelId = await resolveChannelId(
-              botToken,
-              slackChannel,
-            );
-
-            const pdfBuffer = await generateStockRecordPdf({
+        if (botToken) {
+          let pdfBuffer: Buffer | null = null;
+          try {
+            pdfBuffer = await generateStockRecordPdf({
               ...fullRecord,
               vendorName,
               submittedByName,
             });
+          } catch (pdfErr) {
+            console.error('[StockRecordsService] Error generating PDF:', pdfErr);
+          }
 
-            const safeLocationName = fullRecord.location.name.replace(
-              /[^a-zA-Z0-9]/g,
-              '_',
-            );
-            const fileName = `StockAudit_${safeLocationName}_${new Date().toISOString().split('T')[0]}.pdf`;
+          const safeLocationName = fullRecord.location.name.replace(
+            /[^a-zA-Z0-9]/g,
+            '_',
+          );
+          const fileName = `StockAudit_${safeLocationName}_${new Date().toISOString().split('T')[0]}.pdf`;
 
-            let message =
-              `📄 *Stock Count Audit Submitted*\n` +
-              `• *Location:* ${fullRecord.location.name}\n` +
-              `• *Vendor:* ${vendorName}\n` +
-              `• *Department:* ${department?.fullName || 'N/A'}\n` +
-              `• *Submitted By:* ${submittedByName || fullRecord.submittedBy || 'System'}\n` +
-              `• *Date:* ${new Date(fullRecord.submittedAt).toLocaleString()}\n\n`;
+          // 1. Post to Department or Primary Notification channel
+          const primaryChannel = department?.slackChannel || (!fullRecord.slackMessageTs ? vendor?.channelName : null);
 
-            if (createdPoId) {
-              const frontendUrl =
-                process.env.FRONTEND_URL || 'http://localhost:3000';
-              message +=
-                `🛍️ *Auto-Drafted Purchase Order Created*\n` +
-                `• *Status:* DRAFT\n` +
-                `• *Review Link:* <${frontendUrl}/dashboard/admin/reports?poId=${createdPoId}|Review & Approve Purchase Order (Managers/Admins Only)>\n\n`;
-            }
+          if (primaryChannel) {
+            try {
+              const resolvedChannelId = await resolveChannelId(
+                botToken,
+                primaryChannel,
+              );
 
-            message += `Please find the detailed PDF report attached below.`;
+              let message =
+                `📄 *Stock Count Audit Submitted*\n` +
+                `• *Location:* ${fullRecord.location.name}\n` +
+                `• *Vendor:* ${vendorName}\n` +
+                `• *Department:* ${department?.fullName || 'N/A'}\n` +
+                `• *Submitted By:* ${submittedByName || fullRecord.submittedBy || 'System'}\n` +
+                `• *Date:* ${new Date(fullRecord.submittedAt).toLocaleString()}\n\n`;
 
-            // Send the message text first to get the ts
-            const postMsgResponse = await fetch(
-              'https://slack.com/api/chat.postMessage',
-              {
-                method: 'POST',
-                headers: {
-                  Authorization: `Bearer ${botToken}`,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  channel: resolvedChannelId,
-                  text: message,
-                }),
-              },
-            );
+              if (createdPoId) {
+                const frontendUrl =
+                  process.env.FRONTEND_URL || 'http://localhost:3000';
+                message +=
+                  `🛍️ *Auto-Drafted Purchase Order Created*\n` +
+                  `• *Status:* DRAFT\n` +
+                  `• *Review Link:* <${frontendUrl}/dashboard/admin/reports?poId=${createdPoId}|Review & Approve Purchase Order (Managers/Admins Only)>\n\n`;
+              }
 
-            const postMsgResult: any = await postMsgResponse.json();
-            if (postMsgResult.ok && postMsgResult.ts) {
-              const responseSlackMessageTs = postMsgResult.ts;
+              message += `Please find the detailed PDF report attached below.`;
 
-              // Save ts to database
-              await this.prisma.stockRecord.update({
-                where: { id },
-                data: { responseSlackMessageTs },
-              });
-              completedRecord.responseSlackMessageTs = responseSlackMessageTs;
-
-              // Step 1: Get upload URL and file ID
-              const urlEncodedBody = new URLSearchParams();
-              urlEncodedBody.append('filename', fileName);
-              urlEncodedBody.append('length', pdfBuffer.length.toString());
-
-              const getUrlResponse = await fetch(
-                'https://slack.com/api/files.getUploadURLExternal',
+              const postMsgResponse = await fetch(
+                'https://slack.com/api/chat.postMessage',
                 {
                   method: 'POST',
                   headers: {
                     Authorization: `Bearer ${botToken}`,
-                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Content-Type': 'application/json',
                   },
-                  body: urlEncodedBody.toString(),
+                  body: JSON.stringify({
+                    channel: resolvedChannelId,
+                    text: message,
+                  }),
                 },
               );
 
-              const getUrlResult: any = await getUrlResponse.json();
-              if (getUrlResult.ok) {
-                const { upload_url, file_id } = getUrlResult;
+              const postMsgResult: any = await postMsgResponse.json();
+              if (postMsgResult.ok && postMsgResult.ts) {
+                const responseSlackMessageTs = postMsgResult.ts;
 
-                // Step 2: Upload file contents directly (raw binary body)
-                const uploadFileResponse = await fetch(upload_url, {
-                  method: 'POST',
-                  body: new Uint8Array(pdfBuffer),
+                await this.prisma.stockRecord.update({
+                  where: { id },
+                  data: { responseSlackMessageTs },
                 });
+                completedRecord.responseSlackMessageTs = responseSlackMessageTs;
 
-                if (uploadFileResponse.ok) {
-                  // Step 3: Complete the file upload and share with the thread
-                  const completeResponse = await fetch(
-                    'https://slack.com/api/files.completeUploadExternal',
-                    {
-                      method: 'POST',
-                      headers: {
-                        Authorization: `Bearer ${botToken}`,
-                        'Content-Type': 'application/json',
-                      },
-                      body: JSON.stringify({
-                        files: [{ id: file_id, title: fileName }],
-                        channel_id: resolvedChannelId,
-                        thread_ts: responseSlackMessageTs,
-                      }),
-                    },
-                  );
-
-                  const completeResult: any = await completeResponse.json();
-                  if (!completeResult.ok) {
-                    console.error(
-                      '[Slack] completeUploadExternal failed:',
-                      completeResult.error,
-                    );
-                  }
-                } else {
-                  console.error(
-                    '[Slack] External binary upload failed with status:',
-                    uploadFileResponse.status,
-                  );
+                if (pdfBuffer) {
+                  await uploadPdfToSlackThread(
+                    botToken,
+                    resolvedChannelId,
+                    responseSlackMessageTs,
+                    pdfBuffer,
+                    fileName,
+                    'Attached: Stock Count Audit PDF',
+                  ).catch((uploadErr) => {
+                    console.error('[Slack] Failed to upload PDF to primary channel thread:', uploadErr);
+                  });
                 }
               } else {
                 console.error(
-                  '[Slack] getUploadURLExternal failed:',
-                  getUrlResult.error,
+                  '[Slack] chat.postMessage failed:',
+                  postMsgResult.error,
                 );
               }
-            } else {
-              console.error(
-                '[Slack] chat.postMessage failed:',
-                postMsgResult.error,
-              );
+            } catch (primarySlackErr) {
+              console.error('[Slack] Error posting to primary channel:', primarySlackErr);
             }
+          }
 
-            // In addition, if this stock record was triggered by a schedule and has a slackMessageTs, send the PDF as a threaded reply to the trigger message.
-            const vendorChannel = vendor?.channelName;
-            if (fullRecord.slackMessageTs && vendorChannel) {
-              try {
-                const resolvedVendorChannelId = await resolveChannelId(
+          // 2. Reply to trigger message thread on vendor channel if scheduled
+          const vendorChannel = vendor?.channelName;
+          if (fullRecord.slackMessageTs && vendorChannel) {
+            try {
+              const resolvedVendorChannelId = await resolveChannelId(
+                botToken,
+                vendorChannel,
+              );
+              const triggerReplyMessage =
+                `✅ *Stock Count Completed & Submitted*\n` +
+                `• *Submitted By:* ${submittedByName || fullRecord.submittedBy || 'System'}\n` +
+                `• *Date:* ${new Date(fullRecord.submittedAt).toLocaleString()}\n\n` +
+                `The detailed stock count audit report has been attached to this thread.`;
+
+              if (pdfBuffer) {
+                await uploadPdfToSlackThread(
                   botToken,
-                  vendorChannel,
-                );
-                const triggerReplyMessage =
-                  `✅ *Stock Count Completed & Submitted*\n` +
-                  `• *Submitted By:* ${submittedByName || fullRecord.submittedBy || 'System'}\n` +
-                  `• *Date:* ${new Date(fullRecord.submittedAt).toLocaleString()}\n\n` +
-                  `The detailed stock count audit report has been attached to this thread.`;
-
-                // Step 1: Get upload URL and file ID for the reply
-                const urlEncodedBodyReply = new URLSearchParams();
-                urlEncodedBodyReply.append('filename', fileName);
-                urlEncodedBodyReply.append(
-                  'length',
-                  pdfBuffer.length.toString(),
-                );
-
-                const getUrlResponseReply = await fetch(
-                  'https://slack.com/api/files.getUploadURLExternal',
-                  {
-                    method: 'POST',
-                    headers: {
-                      Authorization: `Bearer ${botToken}`,
-                      'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: urlEncodedBodyReply.toString(),
+                  resolvedVendorChannelId,
+                  fullRecord.slackMessageTs,
+                  pdfBuffer,
+                  fileName,
+                  triggerReplyMessage,
+                ).catch((uploadErr) => {
+                  console.error('[Slack] Failed to upload PDF to schedule thread:', uploadErr);
+                });
+              } else {
+                await fetch('https://slack.com/api/chat.postMessage', {
+                  method: 'POST',
+                  headers: {
+                    Authorization: `Bearer ${botToken}`,
+                    'Content-Type': 'application/json',
                   },
-                );
-
-                const getUrlResultReply: any = await getUrlResponseReply.json();
-                if (getUrlResultReply.ok) {
-                  const { upload_url: uploadUrlReply, file_id: fileIdReply } =
-                    getUrlResultReply;
-
-                  const uploadFileResponseReply = await fetch(uploadUrlReply, {
-                    method: 'POST',
-                    body: new Uint8Array(pdfBuffer),
-                  });
-
-                  if (uploadFileResponseReply.ok) {
-                    const completeResponseReply = await fetch(
-                      'https://slack.com/api/files.completeUploadExternal',
-                      {
-                        method: 'POST',
-                        headers: {
-                          Authorization: `Bearer ${botToken}`,
-                          'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                          files: [{ id: fileIdReply, title: fileName }],
-                          channel_id: resolvedVendorChannelId,
-                          thread_ts: fullRecord.slackMessageTs,
-                          initial_comment: triggerReplyMessage,
-                        }),
-                      },
-                    );
-                    const completeResultReply: any =
-                      await completeResponseReply.json();
-                    if (!completeResultReply.ok) {
-                      console.error(
-                        '[Slack] completeUploadExternal for trigger reply failed:',
-                        completeResultReply.error,
-                      );
-                    }
-                  } else {
-                    console.error(
-                      '[Slack] Binary upload for trigger reply failed with status:',
-                      uploadFileResponseReply.status,
-                    );
-                  }
-                } else {
-                  console.error(
-                    '[Slack] getUploadURLExternal for trigger reply failed:',
-                    getUrlResultReply.error,
-                  );
-                }
-              } catch (err) {
-                console.error(
-                  '[Slack] Error sending trigger notification reply:',
-                  err,
-                );
+                  body: JSON.stringify({
+                    channel: resolvedVendorChannelId,
+                    thread_ts: fullRecord.slackMessageTs,
+                    text: triggerReplyMessage,
+                  }),
+                });
               }
+            } catch (err) {
+              console.error(
+                '[Slack] Error sending trigger notification reply:',
+                err,
+              );
             }
           }
         }
-      } catch (slackErr) {
-        console.error('[Slack] Error in PDF generation/upload:', slackErr);
       }
-    })();
+    } catch (slackErr) {
+      console.error('[StockRecordsService] Error in post-completion workflow:', slackErr);
+    }
 
     return completedRecord;
   }

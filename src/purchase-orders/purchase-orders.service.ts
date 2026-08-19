@@ -146,37 +146,35 @@ export class PurchaseOrdersService {
     });
 
     // Post Slack Thread Reply if there's an associated stock record
-    void (async () => {
-      try {
-        const loc = await this.prisma.location.findUnique({ where: { id: updatedPo.locationId } });
-        const botToken = decryptToken(loc?.slackBotToken);
-        const stockRecord = updatedPo.stockRecord;
-        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    try {
+      const loc = await this.prisma.location.findUnique({ where: { id: updatedPo.locationId } });
+      const botToken = decryptToken(loc?.slackBotToken);
+      const stockRecord = updatedPo.stockRecord;
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
 
-        if (botToken && stockRecord) {
-          const deptChannel = updatedPo.vendor?.department?.slackChannel;
-          if (stockRecord.responseSlackMessageTs && deptChannel) {
-            try {
-              const resolvedChannelId = await resolveChannelId(botToken, deptChannel);
-              const pdfBuffer = await generatePurchaseOrderPdf(updatedPo);
-              const safeLocationName = updatedPo.location.name.replace(/[^a-zA-Z0-9]/g, '_');
-              const fileName = `PurchaseOrder_${safeLocationName}_${new Date().toISOString().split('T')[0]}.pdf`;
-              const msg =
-                `🛍️ *Purchase Order #${updatedPo.id.slice(0, 8)} Approved*\n` +
-                `• *Status:* APPROVED\n` +
-                `• *Approved By:* ${user?.fullName || 'System'}\n` +
-                `• *Date:* ${new Date().toLocaleString()}\n\n` +
-                `This purchase order has been approved. PDF attached.`;
-              await uploadPdfToSlackThread(botToken, resolvedChannelId, stockRecord.responseSlackMessageTs, pdfBuffer, fileName, msg);
-            } catch (err) {
-              console.error('[Slack] Failed to send approval reply to department message:', err);
-            }
+      if (botToken && stockRecord) {
+        const deptChannel = updatedPo.vendor?.department?.slackChannel;
+        if (stockRecord.responseSlackMessageTs && deptChannel) {
+          try {
+            const resolvedChannelId = await resolveChannelId(botToken, deptChannel);
+            const pdfBuffer = await generatePurchaseOrderPdf(updatedPo);
+            const safeLocationName = updatedPo.location.name.replace(/[^a-zA-Z0-9]/g, '_');
+            const fileName = `PurchaseOrder_${safeLocationName}_${new Date().toISOString().split('T')[0]}.pdf`;
+            const msg =
+              `🛍️ *Purchase Order #${updatedPo.id.slice(0, 8)} Approved*\n` +
+              `• *Status:* APPROVED\n` +
+              `• *Approved By:* ${user?.fullName || 'System'}\n` +
+              `• *Date:* ${new Date().toLocaleString()}\n\n` +
+              `This purchase order has been approved. PDF attached.`;
+            await uploadPdfToSlackThread(botToken, resolvedChannelId, stockRecord.responseSlackMessageTs, pdfBuffer, fileName, msg);
+          } catch (err) {
+            console.error('[Slack] Failed to send approval reply to department message:', err);
           }
         }
-      } catch (err) {
-        console.error('[Slack] Failed to start approval reply task:', err);
       }
-    })();
+    } catch (err) {
+      console.error('[Slack] Failed to process approval reply task:', err);
+    }
 
     return updatedPo;
   }
@@ -250,102 +248,100 @@ export class PurchaseOrdersService {
     po.status = PurchaseOrderStatus.SENT;
     po.emailsSent = emailsSentStr;
 
-    // Generate the PDF, send email, and post Slack replies in the background.
-    void (async () => {
+    // Generate the PDF, send email, and post Slack replies
+    try {
+      const pdfBuffer = await generatePurchaseOrderPdf(po);
+      const base64Content = pdfBuffer.toString('base64');
+      const safeLocationName = po.location.name.replace(/[^a-zA-Z0-9]/g, '_');
+      const fileName = `PurchaseOrder_${safeLocationName}_${new Date().toISOString().split('T')[0]}.pdf`;
+
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      const senderEmail = user?.email || 'admin@shawarmaguys.com';
+
+      const poIdShort = po.id.slice(0, 8);
+      const subject = sendPurchaseOrderDto.subject || `Purchase Order #${poIdShort} - Shawarma Guys (${po.location.name})`;
+
+      const htmlBody = sendPurchaseOrderDto.body || `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+          <h2 style="color: #10b981;">Shawarma Guys Purchase Order</h2>
+          <p>Dear ${po.vendor?.displayName || 'Supplier'},</p>
+          <p>Please find attached our official Purchase Order <strong>#${poIdShort}</strong> from <strong>Shawarma Guys - ${po.location.name}</strong>.</p>
+          <p><strong>Order Details:</strong></p>
+          <ul>
+            <li><strong>Location:</strong> ${po.location.name}</li>
+            <li><strong>Date:</strong> ${new Date(po.createdAt).toLocaleDateString()}</li>
+            <li><strong>Generated By:</strong> ${po.createdBy || 'System'}</li>
+          </ul>
+          <p>Please confirm receipt of this order and coordinate delivery details with us.</p>
+          <br/>
+          <p>Best regards,</p>
+          <p><strong>${user?.fullName || 'Inventory Manager'}</strong><br/>Shawarma Guys Team</p>
+        </div>
+      `;
+
+      const payload = {
+        to: sendPurchaseOrderDto.emails.join(','),
+        subject,
+        htmlBody,
+        body: 'Please see the attached PDF purchase order.',
+        replyTo: senderEmail,
+        cc: senderEmail,
+        attachments: [{ name: fileName, mimeType: 'application/pdf', content: base64Content }],
+      };
+
       try {
-        const pdfBuffer = await generatePurchaseOrderPdf(po);
-        const base64Content = pdfBuffer.toString('base64');
-        const safeLocationName = po.location.name.replace(/[^a-zA-Z0-9]/g, '_');
-        const fileName = `PurchaseOrder_${safeLocationName}_${new Date().toISOString().split('T')[0]}.pdf`;
+        const response = await fetch(configuredEmailServiceUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const responseText = await response.text();
+        console.log('Google Script Email Response:', responseText);
 
-        const user = await this.prisma.user.findUnique({ where: { id: userId } });
-        const senderEmail = user?.email || 'admin@shawarmaguys.com';
+        const loc = await this.prisma.location.findUnique({ where: { id: po.locationId } });
+        const botToken = decryptToken(loc?.slackBotToken);
+        const stockRecord = po.stockRecord;
 
-        const poIdShort = po.id.slice(0, 8);
-        const subject = sendPurchaseOrderDto.subject || `Purchase Order #${poIdShort} - Shawarma Guys (${po.location.name})`;
-
-        const htmlBody = sendPurchaseOrderDto.body || `
-          <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <h2 style="color: #10b981;">Shawarma Guys Purchase Order</h2>
-            <p>Dear ${po.vendor?.displayName || 'Supplier'},</p>
-            <p>Please find attached our official Purchase Order <strong>#${poIdShort}</strong> from <strong>Shawarma Guys - ${po.location.name}</strong>.</p>
-            <p><strong>Order Details:</strong></p>
-            <ul>
-              <li><strong>Location:</strong> ${po.location.name}</li>
-              <li><strong>Date:</strong> ${new Date(po.createdAt).toLocaleDateString()}</li>
-              <li><strong>Generated By:</strong> ${po.createdBy || 'System'}</li>
-            </ul>
-            <p>Please confirm receipt of this order and coordinate delivery details with us.</p>
-            <br/>
-            <p>Best regards,</p>
-            <p><strong>${user?.fullName || 'Inventory Manager'}</strong><br/>Shawarma Guys Team</p>
-          </div>
-        `;
-
-        const payload = {
-          to: sendPurchaseOrderDto.emails.join(','),
-          subject,
-          htmlBody,
-          body: 'Please see the attached PDF purchase order.',
-          replyTo: senderEmail,
-          cc: senderEmail,
-          attachments: [{ name: fileName, mimeType: 'application/pdf', content: base64Content }],
-        };
-
-        try {
-          const response = await fetch(configuredEmailServiceUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-          const responseText = await response.text();
-          console.log('Google Script Email Response:', responseText);
-
-          const loc = await this.prisma.location.findUnique({ where: { id: po.locationId } });
-          const botToken = decryptToken(loc?.slackBotToken);
-          const stockRecord = po.stockRecord;
-
-          if (botToken && stockRecord) {
-            const vendorChannel = po.vendor?.channelName;
-            if (stockRecord.slackMessageTs && vendorChannel) {
-              try {
-                const resolvedChannelId = await resolveChannelId(botToken, vendorChannel);
-                const msg =
-                  `🛍️ *Purchase Order #${po.id.slice(0, 8)} Sent*\n` +
-                  `• *Status:* SENT\n` +
-                  `• *Sent By:* ${user?.fullName || 'System'}\n` +
-                  `• *Date:* ${new Date().toLocaleString()}\n\n` +
-                  `The official PDF Purchase Order sent to the supplier has been attached to this thread.`;
-                await uploadPdfToSlackThread(botToken, resolvedChannelId, stockRecord.slackMessageTs, pdfBuffer, fileName, msg);
-              } catch (err) {
-                console.error('[Slack] Failed to send reply to trigger message:', err);
-              }
-            }
-
-            const deptChannel = po.vendor?.department?.slackChannel;
-            if (stockRecord.responseSlackMessageTs && deptChannel) {
-              try {
-                const resolvedChannelId = await resolveChannelId(botToken, deptChannel);
-                const msg =
-                  `🛍️ *Purchase Order #${po.id.slice(0, 8)} Approved & Sent*\n` +
-                  `• *Status:* SENT\n` +
-                  `• *Sent By:* ${user?.fullName || 'System'}\n` +
-                  `• *Date:* ${new Date().toLocaleString()}\n\n` +
-                  `This purchase order has been finalized and sent to the supplier. PDF attached.`;
-                await uploadPdfToSlackThread(botToken, resolvedChannelId, stockRecord.responseSlackMessageTs, pdfBuffer, fileName, msg);
-              } catch (err) {
-                console.error('[Slack] Failed to send reply to department message:', err);
-              }
+        if (botToken && stockRecord) {
+          const vendorChannel = po.vendor?.channelName;
+          if (stockRecord.slackMessageTs && vendorChannel) {
+            try {
+              const resolvedChannelId = await resolveChannelId(botToken, vendorChannel);
+              const msg =
+                `🛍️ *Purchase Order #${po.id.slice(0, 8)} Sent*\n` +
+                `• *Status:* SENT\n` +
+                `• *Sent By:* ${user?.fullName || 'System'}\n` +
+                `• *Date:* ${new Date().toLocaleString()}\n\n` +
+                `The official PDF Purchase Order sent to the supplier has been attached to this thread.`;
+              await uploadPdfToSlackThread(botToken, resolvedChannelId, stockRecord.slackMessageTs, pdfBuffer, fileName, msg);
+            } catch (err) {
+              console.error('[Slack] Failed to send reply to trigger message:', err);
             }
           }
-        } catch (error: any) {
-          console.error('Failed to send PO email via Google Script:', error);
+
+          const deptChannel = po.vendor?.department?.slackChannel;
+          if (stockRecord.responseSlackMessageTs && deptChannel) {
+            try {
+              const resolvedChannelId = await resolveChannelId(botToken, deptChannel);
+              const msg =
+                `🛍️ *Purchase Order #${po.id.slice(0, 8)} Approved & Sent*\n` +
+                `• *Status:* SENT\n` +
+                `• *Sent By:* ${user?.fullName || 'System'}\n` +
+                `• *Date:* ${new Date().toLocaleString()}\n\n` +
+                `This purchase order has been finalized and sent to the supplier. PDF attached.`;
+              await uploadPdfToSlackThread(botToken, resolvedChannelId, stockRecord.responseSlackMessageTs, pdfBuffer, fileName, msg);
+            } catch (err) {
+              console.error('[Slack] Failed to send reply to department message:', err);
+            }
+          }
         }
       } catch (error: any) {
-        console.error('Failed to run queued PO send task:', error);
+        console.error('Failed to send PO email via Google Script:', error);
       }
-    })();
+    } catch (error: any) {
+      console.error('Failed to run PO send task:', error);
+    }
 
-    return { success: true, message: 'Purchase Order send queued.' };
+    return { success: true, message: 'Purchase Order sent successfully.' };
   }
 }

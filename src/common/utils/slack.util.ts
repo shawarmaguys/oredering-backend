@@ -67,10 +67,10 @@ export async function resolveChannelId(
 export async function uploadPdfToSlackThread(
   botToken: string,
   channelId: string,
-  threadTs: string,
+  threadTs: string | null | undefined,
   pdfBuffer: Buffer,
   fileName: string,
-  message: string,
+  message?: string,
 ): Promise<any> {
   const urlEncodedBody = new URLSearchParams();
   urlEncodedBody.append('filename', fileName);
@@ -106,6 +106,17 @@ export async function uploadPdfToSlackThread(
     );
   }
 
+  const completePayload: any = {
+    files: [{ id: file_id, title: fileName }],
+    channel_id: channelId,
+  };
+  if (threadTs) {
+    completePayload.thread_ts = threadTs;
+  }
+  if (message) {
+    completePayload.initial_comment = message;
+  }
+
   const completeResponse = await fetch(
     'https://slack.com/api/files.completeUploadExternal',
     {
@@ -114,12 +125,7 @@ export async function uploadPdfToSlackThread(
         Authorization: `Bearer ${botToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        files: [{ id: file_id, title: fileName }],
-        channel_id: channelId,
-        thread_ts: threadTs,
-        initial_comment: message,
-      }),
+      body: JSON.stringify(completePayload),
     },
   );
 
