@@ -41,8 +41,10 @@ export class ItemsService {
     search?: string;
     page?: number;
     limit?: number;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
   } = {}) {
-    const { vendorId, search, page = 1, limit = 50 } = options;
+    const { vendorId, search, page = 1, limit = 50, sortBy, sortOrder = 'asc' } = options;
     const skip = (page - 1) * limit;
 
     const where: any = { isActive: true };
@@ -54,11 +56,22 @@ export class ItemsService {
       ];
     }
 
+    let orderBy: any = { displayName: 'asc' };
+    if (sortBy === 'name') orderBy = { displayName: sortOrder };
+    else if (sortBy === 'vendor') orderBy = { vendor: { displayName: sortOrder } };
+    else if (sortBy === 'code') orderBy = { productCode: sortOrder };
+    else if (sortBy === 'note') orderBy = { note: sortOrder };
+    else if (sortBy === 'pack') orderBy = { displayUnitName: sortOrder };
+    else if (sortBy === 'baseUnit') orderBy = { baseUnitName: sortOrder };
+    else if (sortBy === 'multiplier') orderBy = { multiplier: sortOrder };
+    else if (sortBy === 'status') orderBy = { isActive: sortOrder };
+    else if (sortBy === 'createdAt') orderBy = { createdAt: sortOrder };
+
     const [data, total] = await this.prisma.$transaction([
       this.prisma.item.findMany({
         where,
         include: { vendor: true },
-        orderBy: { displayName: 'asc' },
+        orderBy,
         skip,
         take: limit,
       }),
