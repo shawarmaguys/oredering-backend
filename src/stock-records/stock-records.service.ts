@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateStockRecordDto } from './dto/create-stock-record.dto';
@@ -12,6 +13,8 @@ import { resolveChannelId, uploadPdfToSlackThread } from '../common/utils/slack.
 
 @Injectable()
 export class StockRecordsService {
+  private readonly logger = new Logger(StockRecordsService.name);
+
   constructor(private readonly prisma: PrismaService) { }
 
   async create(
@@ -335,8 +338,11 @@ export class StockRecordsService {
               }
               createdPoId = existingPo.id;
             }
-          } catch (poErr) {
-            console.error('[StockRecordsService] Error drafting purchase order:', poErr);
+          } catch (poErr: any) {
+            this.logger.error(
+              `[StockRecord:${id}] Error auto-drafting purchase order: ${poErr?.message || poErr}`,
+              poErr?.stack,
+            );
           }
         }
 
@@ -344,14 +350,21 @@ export class StockRecordsService {
 
         if (botToken) {
           let pdfBuffer: Buffer | null = null;
+          const pdfStartTime = Date.now();
           try {
             pdfBuffer = await generateStockRecordPdf({
               ...fullRecord,
               vendorName,
               submittedByName,
             });
+            this.logger.log(
+              `[StockRecord:${id}] Generated PDF (${pdfBuffer?.length || 0} bytes) in ${Date.now() - pdfStartTime}ms`,
+            );
           } catch (pdfErr) {
-            console.error('[StockRecordsService] Error generating PDF:', pdfErr);
+            this.logger.error(
+              `[StockRecord:${id}] Error generating PDF: ${pdfErr?.message || pdfErr}`,
+              pdfErr?.stack,
+            );
           }
 
           const safeLocationName = fullRecord.location.name.replace(
@@ -414,6 +427,10 @@ export class StockRecordsService {
                 });
                 completedRecord.responseSlackMessageTs = responseSlackMessageTs;
 
+                this.logger.log(
+                  `[StockRecord:${id}] Posted Slack message to channel ${resolvedChannelId} (ts: ${responseSlackMessageTs})`,
+                );
+
                 if (pdfBuffer) {
                   await uploadPdfToSlackThread(
                     botToken,
@@ -422,18 +439,27 @@ export class StockRecordsService {
                     pdfBuffer,
                     fileName,
                     'Attached: Stock Count Audit PDF',
-                  ).catch((uploadErr) => {
-                    console.error('[Slack] Failed to upload PDF to primary channel thread:', uploadErr);
+                  ).then(() => {
+                    this.logger.log(
+                      `[StockRecord:${id}] Successfully uploaded PDF to Slack thread ${responseSlackMessageTs}`,
+                    );
+                  }).catch((uploadErr) => {
+                    this.logger.error(
+                      `[StockRecord:${id}] Failed to upload PDF to primary channel thread: ${uploadErr?.message || uploadErr}`,
+                      uploadErr?.stack,
+                    );
                   });
                 }
               } else {
-                console.error(
-                  '[Slack] chat.postMessage failed:',
-                  postMsgResult.error,
+                this.logger.error(
+                  `[StockRecord:${id}] Slack chat.postMessage failed: ${postMsgResult.error}`,
                 );
               }
             } catch (primarySlackErr) {
-              console.error('[Slack] Error posting to primary channel:', primarySlackErr);
+              this.logger.error(
+                `[StockRecord:${id}] Error posting to primary Slack channel: ${primarySlackErr?.message || primarySlackErr}`,
+                primarySlackErr?.stack,
+              );
             }
           }
 
@@ -459,8 +485,15 @@ export class StockRecordsService {
                   pdfBuffer,
                   fileName,
                   triggerReplyMessage,
-                ).catch((uploadErr) => {
-                  console.error('[Slack] Failed to upload PDF to schedule thread:', uploadErr);
+                ).then(() => {
+                  this.logger.log(
+                    `[StockRecord:${id}] Successfully replied with PDF to trigger thread ${fullRecord.slackMessageTs}`,
+                  );
+                }).catch((uploadErr) => {
+                  this.logger.error(
+                    `[StockRecord:${id}] Failed to upload PDF to schedule thread: ${uploadErr?.message || uploadErr}`,
+                    uploadErr?.stack,
+                  );
                 });
               } else {
                 await fetch('https://slack.com/api/chat.postMessage', {
@@ -475,18 +508,24 @@ export class StockRecordsService {
                     text: triggerReplyMessage,
                   }),
                 });
+                this.logger.log(
+                  `[StockRecord:${id}] Replied with text to trigger thread ${fullRecord.slackMessageTs}`,
+                );
               }
             } catch (err) {
-              console.error(
-                '[Slack] Error sending trigger notification reply:',
-                err,
+              this.logger.error(
+                `[StockRecord:${id}] Error sending trigger notification reply: ${err?.message || err}`,
+                err?.stack,
               );
             }
           }
         }
       }
     } catch (slackErr) {
-      console.error('[StockRecordsService] Error in post-completion workflow:', slackErr);
+      this.logger.error(
+        `[StockRecord:${id}] Error in post-completion workflow: ${slackErr?.message || slackErr}`,
+        slackErr?.stack,
+      );
     }
 
     return completedRecord;

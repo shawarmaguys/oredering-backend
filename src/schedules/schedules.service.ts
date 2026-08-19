@@ -1,10 +1,12 @@
-import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleInit, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { decryptToken } from '../common/utils/crypto.util';
 
 @Injectable()
 export class SchedulesService implements OnModuleInit {
+  private readonly logger = new Logger(SchedulesService.name);
+
   constructor(private readonly prisma: PrismaService) { }
 
   onModuleInit() {
@@ -43,15 +45,21 @@ export class SchedulesService implements OnModuleInit {
             schedule.scheduleType === 'DAILY' ||
             (schedule.scheduleType === 'WEEKLY' && schedule.dayOfWeek === currentDayOfWeek)
           ) {
-            console.log(`[Cron Scheduler] Triggering schedule ${schedule.id} at ${currentTimeStr}`);
-            await this.trigger(schedule.id).catch((err) => {
-              console.error(`[Cron Scheduler] Failed to trigger schedule ${schedule.id}:`, err);
+            this.logger.log(`[Cron Scheduler] Triggering schedule ${schedule.id} at ${currentTimeStr}`);
+            await this.trigger(schedule.id).catch((err: any) => {
+              this.logger.error(
+                `[Cron Scheduler] Failed to trigger schedule ${schedule.id}: ${err?.message || err}`,
+                err?.stack,
+              );
             });
           }
         }
       }
-    } catch (err) {
-      console.error('[Cron Scheduler] Error running schedule checks:', err);
+    } catch (err: any) {
+      this.logger.error(
+        `[Cron Scheduler] Error running schedule checks: ${err?.message || err}`,
+        err?.stack,
+      );
     }
   }
 
@@ -181,14 +189,10 @@ export class SchedulesService implements OnModuleInit {
       const slackChannel = schedule.vendor?.channelName;
       const botToken = decryptToken(schedule.location?.slackBotToken);
 
-      console.log(botToken, 'botToken');
-      console.log(slackChannel, 'slackChannel');
-
       if (botToken && slackChannel) {
         try {
           const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
           const formUrl = `${frontendUrl}/dashboard?recordId=${stockRecord.id}`;
-          console.log(formUrl, 'formUrl');
           const text = `🔔 *PLEASE IGNORE THIS TEST MESSAGE* 🔔\n` +
             `A new stock record count has been initiated for *${schedule.location.name}* (Vendor: *${schedule.vendor.displayName}*).\n` +
             `Please complete the stock recording as soon as possible.\n` +
@@ -196,6 +200,7 @@ export class SchedulesService implements OnModuleInit {
             `• *Channel:* #${slackChannel}\n\n` +
             `👉 *<${formUrl}|Click here to open the Stock Recording Form>*`;
 
+          const targetChannel = slackChannel.startsWith('#') ? slackChannel : `#${slackChannel}`;
           const response = await fetch('https://slack.com/api/chat.postMessage', {
             method: 'POST',
             headers: {
@@ -203,21 +208,27 @@ export class SchedulesService implements OnModuleInit {
               Authorization: `Bearer ${botToken}`,
             },
             body: JSON.stringify({
-              channel: slackChannel.startsWith('#') ? slackChannel : `#${slackChannel}`,
+              channel: targetChannel,
               text,
             }),
           });
 
-          // console.log("response", response);
-
           const resData: any = await response.json();
           if (resData.ok) {
             slackMessageTs = resData.ts;
+            this.logger.log(
+              `[Schedule:${id}] Sent schedule trigger Slack message to ${targetChannel} (ts: ${slackMessageTs})`,
+            );
           } else {
-            console.error('Slack API error:', resData.error);
+            this.logger.error(
+              `[Schedule:${id}] Slack API error sending trigger message to ${targetChannel}: ${resData.error}`,
+            );
           }
-        } catch (slackErr) {
-          console.error('Failed to send slack message:', slackErr);
+        } catch (slackErr: any) {
+          this.logger.error(
+            `[Schedule:${id}] Failed to send Slack trigger message: ${slackErr?.message || slackErr}`,
+            slackErr?.stack,
+          );
         }
       }
 

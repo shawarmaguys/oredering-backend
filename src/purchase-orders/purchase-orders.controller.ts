@@ -9,11 +9,9 @@ import {
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
-  UseInterceptors,
   Res,
 } from '@nestjs/common';
 import { Response } from 'express';
-import { CacheInterceptor } from '@nestjs/cache-manager';
 import { generatePurchaseOrderPdf } from '../common/utils/pdf.util';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto';
@@ -27,7 +25,6 @@ import { UserRole, PurchaseOrderStatus } from '@prisma/client';
 
 @Controller('purchase-orders')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@UseInterceptors(CacheInterceptor)
 export class PurchaseOrdersController {
   constructor(private readonly purchaseOrdersService: PurchaseOrdersService) {}
 

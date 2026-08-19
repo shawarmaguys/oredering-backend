@@ -1,9 +1,11 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTranslationDto } from './dto/create-translation.dto';
 
 @Injectable()
 export class TranslationsService implements OnModuleInit {
+  private readonly logger = new Logger(TranslationsService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async onModuleInit() {
@@ -149,7 +151,7 @@ export class TranslationsService implements OnModuleInit {
       const data = await response.json();
       return data;
     } catch (error: any) {
-      console.error('Translation service error:', error);
+      this.logger.error(`Translation service error: ${error?.message || error}`, error?.stack);
       return { success: false, original: text, translated: '', error: error.message };
     }
   }

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto';
 import { UpdatePurchaseOrderDto } from './dto/update-purchase-order.dto';
@@ -10,6 +10,8 @@ import { resolveChannelId, uploadPdfToSlackThread } from '../common/utils/slack.
 
 @Injectable()
 export class PurchaseOrdersService {
+  private readonly logger = new Logger(PurchaseOrdersService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createPurchaseOrderDto: CreatePurchaseOrderDto, userId: string) {
@@ -167,13 +169,22 @@ export class PurchaseOrdersService {
               `• *Date:* ${new Date().toLocaleString()}\n\n` +
               `This purchase order has been approved. PDF attached.`;
             await uploadPdfToSlackThread(botToken, resolvedChannelId, stockRecord.responseSlackMessageTs, pdfBuffer, fileName, msg);
-          } catch (err) {
-            console.error('[Slack] Failed to send approval reply to department message:', err);
+            this.logger.log(
+              `[PurchaseOrder:${id}] Uploaded approval PDF to department thread ${stockRecord.responseSlackMessageTs} on channel ${resolvedChannelId}`,
+            );
+          } catch (err: any) {
+            this.logger.error(
+              `[PurchaseOrder:${id}] Failed to send approval reply to department message: ${err?.message || err}`,
+              err?.stack,
+            );
           }
         }
       }
-    } catch (err) {
-      console.error('[Slack] Failed to process approval reply task:', err);
+    } catch (err: any) {
+      this.logger.error(
+        `[PurchaseOrder:${id}] Failed to process approval reply task: ${err?.message || err}`,
+        err?.stack,
+      );
     }
 
     return updatedPo;
@@ -250,7 +261,12 @@ export class PurchaseOrdersService {
 
     // Generate the PDF, send email, and post Slack replies
     try {
+      const pdfStartTime = Date.now();
       const pdfBuffer = await generatePurchaseOrderPdf(po);
+      this.logger.log(
+        `[PurchaseOrder:${id}] Generated PO PDF (${pdfBuffer.length} bytes) in ${Date.now() - pdfStartTime}ms`,
+      );
+
       const base64Content = pdfBuffer.toString('base64');
       const safeLocationName = po.location.name.replace(/[^a-zA-Z0-9]/g, '_');
       const fileName = `PurchaseOrder_${safeLocationName}_${new Date().toISOString().split('T')[0]}.pdf`;
@@ -290,13 +306,16 @@ export class PurchaseOrdersService {
       };
 
       try {
+        const emailStartTime = Date.now();
         const response = await fetch(configuredEmailServiceUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
         const responseText = await response.text();
-        console.log('Google Script Email Response:', responseText);
+        this.logger.log(
+          `[PurchaseOrder:${id}] Email service response (${Date.now() - emailStartTime}ms, status: ${response.status}): ${responseText}`,
+        );
 
         const loc = await this.prisma.location.findUnique({ where: { id: po.locationId } });
         const botToken = decryptToken(loc?.slackBotToken);
@@ -314,8 +333,14 @@ export class PurchaseOrdersService {
                 `• *Date:* ${new Date().toLocaleString()}\n\n` +
                 `The official PDF Purchase Order sent to the supplier has been attached to this thread.`;
               await uploadPdfToSlackThread(botToken, resolvedChannelId, stockRecord.slackMessageTs, pdfBuffer, fileName, msg);
-            } catch (err) {
-              console.error('[Slack] Failed to send reply to trigger message:', err);
+              this.logger.log(
+                `[PurchaseOrder:${id}] Sent PO PDF reply to vendor thread ${stockRecord.slackMessageTs} on channel ${resolvedChannelId}`,
+              );
+            } catch (err: any) {
+              this.logger.error(
+                `[PurchaseOrder:${id}] Failed to send reply to trigger message: ${err?.message || err}`,
+                err?.stack,
+              );
             }
           }
 
@@ -330,16 +355,28 @@ export class PurchaseOrdersService {
                 `• *Date:* ${new Date().toLocaleString()}\n\n` +
                 `This purchase order has been finalized and sent to the supplier. PDF attached.`;
               await uploadPdfToSlackThread(botToken, resolvedChannelId, stockRecord.responseSlackMessageTs, pdfBuffer, fileName, msg);
-            } catch (err) {
-              console.error('[Slack] Failed to send reply to department message:', err);
+              this.logger.log(
+                `[PurchaseOrder:${id}] Sent PO PDF reply to department thread ${stockRecord.responseSlackMessageTs} on channel ${resolvedChannelId}`,
+              );
+            } catch (err: any) {
+              this.logger.error(
+                `[PurchaseOrder:${id}] Failed to send reply to department message: ${err?.message || err}`,
+                err?.stack,
+              );
             }
           }
         }
       } catch (error: any) {
-        console.error('Failed to send PO email via Google Script:', error);
+        this.logger.error(
+          `[PurchaseOrder:${id}] Failed to send PO email via Google Script: ${error?.message || error}`,
+          error?.stack,
+        );
       }
     } catch (error: any) {
-      console.error('Failed to run PO send task:', error);
+      this.logger.error(
+        `[PurchaseOrder:${id}] Failed to run PO send task: ${error?.message || error}`,
+        error?.stack,
+      );
     }
 
     return { success: true, message: 'Purchase Order sent successfully.' };

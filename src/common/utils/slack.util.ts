@@ -1,3 +1,6 @@
+import { Logger } from '@nestjs/common';
+
+const logger = new Logger('SlackUtil');
 const channelCache = new Map<string, string>();
 
 export async function resolveChannelId(
@@ -35,7 +38,7 @@ export async function resolveChannelId(
 
       const result: any = await response.json();
       if (!result.ok) {
-        console.error('[Slack] conversations.list failed:', result.error);
+        logger.error(`conversations.list failed: ${result.error}`);
         break;
       }
 
@@ -56,8 +59,8 @@ export async function resolveChannelId(
 
       cursor = result.response_metadata?.next_cursor;
     } while (cursor);
-  } catch (err) {
-    console.error('[Slack] Error in resolveChannelId:', err);
+  } catch (err: any) {
+    logger.error(`Error in resolveChannelId for "${cleanName}": ${err?.message || err}`, err?.stack);
   }
 
   // Fallback to original value

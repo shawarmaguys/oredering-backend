@@ -10,9 +10,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
-  UseInterceptors,
 } from '@nestjs/common';
-import { CacheInterceptor } from '@nestjs/cache-manager';
 import { ItemsService } from './items.service';
 import { CreateItemDto } from './dto/create-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
@@ -23,7 +21,6 @@ import { UserRole } from '@prisma/client';
 
 @Controller('items')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@UseInterceptors(CacheInterceptor)
 export class ItemsController {
   constructor(private readonly itemsService: ItemsService) {}
 

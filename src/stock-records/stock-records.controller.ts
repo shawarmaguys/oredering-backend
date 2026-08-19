@@ -9,10 +9,8 @@ import {
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
-  UseInterceptors,
   Query,
 } from '@nestjs/common';
-import { CacheInterceptor } from '@nestjs/cache-manager';
 import { StockRecordsService } from './stock-records.service';
 import { CreateStockRecordDto } from './dto/create-stock-record.dto';
 import { CompleteStockRecordDto } from './dto/complete-stock-record.dto';
@@ -24,7 +22,6 @@ import { UserRole } from '@prisma/client';
 import { createRateLimitGuard } from '../common/guards/rate-limit.guard';
 
 @Controller('stock-records')
-@UseInterceptors(CacheInterceptor)
 export class StockRecordsController {
   constructor(private readonly stockRecordsService: StockRecordsService) { }
 
