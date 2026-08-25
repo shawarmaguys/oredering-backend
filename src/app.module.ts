@@ -12,6 +12,7 @@ import { ItemsModule } from './items/items.module';
 import { StockRecordsModule } from './stock-records/stock-records.module';
 import { PurchaseOrdersModule } from './purchase-orders/purchase-orders.module';
 import { SchedulesModule } from './schedules/schedules.module';
+import { ProductTypesModule } from './product-types/product-types.module';
 import { TranslationsModule } from './translations/translations.module';
 
 @Module({
@@ -29,6 +30,7 @@ import { TranslationsModule } from './translations/translations.module';
     LocationsModule,
     VendorsModule,
     ItemsModule,
+    ProductTypesModule,
     StockRecordsModule,
     PurchaseOrdersModule,
     SchedulesModule,

@@ -33,32 +33,41 @@ export class ItemsService {
         multiplier,
         vendorId,
       },
+      include: {
+        vendor: true,
+        productType: true,
+      },
     });
   }
 
   async findAll(options: {
     vendorId?: string;
+    productTypeId?: string;
     search?: string;
     page?: number;
     limit?: number;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
   } = {}) {
-    const { vendorId, search, page = 1, limit = 50, sortBy, sortOrder = 'asc' } = options;
+    const { vendorId, productTypeId, search, page = 1, limit = 50, sortBy, sortOrder = 'asc' } = options;
     const skip = (page - 1) * limit;
 
     const where: any = { isActive: true };
     if (vendorId) where.vendorId = vendorId;
+    if (productTypeId) where.productTypeId = productTypeId;
     if (search) {
       where.OR = [
         { displayName: { contains: search, mode: 'insensitive' } },
         { productCode: { contains: search, mode: 'insensitive' } },
+        { spanishName: { contains: search, mode: 'insensitive' } },
+        { note: { contains: search, mode: 'insensitive' } },
       ];
     }
 
     let orderBy: any = { displayName: 'asc' };
     if (sortBy === 'name') orderBy = { displayName: sortOrder };
     else if (sortBy === 'vendor') orderBy = { vendor: { displayName: sortOrder } };
+    else if (sortBy === 'productType') orderBy = { productType: { name: sortOrder } };
     else if (sortBy === 'code') orderBy = { productCode: sortOrder };
     else if (sortBy === 'note') orderBy = { note: sortOrder };
     else if (sortBy === 'pack') orderBy = { displayUnitName: sortOrder };
@@ -70,7 +79,10 @@ export class ItemsService {
     const [data, total] = await this.prisma.$transaction([
       this.prisma.item.findMany({
         where,
-        include: { vendor: true },
+        include: {
+          vendor: true,
+          productType: true,
+        },
         orderBy,
         skip,
         take: limit,
@@ -126,6 +138,7 @@ export class ItemsService {
       },
       include: {
         vendor: true,
+        productType: true,
       },
     });
   }

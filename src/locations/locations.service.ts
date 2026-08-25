@@ -82,6 +82,7 @@ export class LocationsService {
       where: { isActive: true },
       include: {
         vendor: true,
+        productType: true,
       },
       orderBy: { displayName: 'asc' },
     });
@@ -99,6 +100,8 @@ export class LocationsService {
         id: item.id,
         displayName: item.displayName,
         productCode: item.productCode,
+        productTypeId: item.productTypeId,
+        productType: item.productType,
         baseUnitName: item.baseUnitName,
         displayUnitName: item.displayUnitName,
         multiplier: Number(item.multiplier),

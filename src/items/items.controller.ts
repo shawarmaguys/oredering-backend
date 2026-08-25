@@ -34,6 +34,7 @@ export class ItemsController {
   @Get()
   async findAll(
     @Query('vendor_id') vendorId?: string,
+    @Query('product_type_id') productTypeId?: string,
     @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
@@ -42,6 +43,7 @@ export class ItemsController {
   ) {
     return this.itemsService.findAll({
       vendorId,
+      productTypeId,
       search,
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 50,

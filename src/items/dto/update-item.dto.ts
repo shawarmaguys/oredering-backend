@@ -30,6 +30,10 @@ export class UpdateItemDto {
   @IsOptional()
   spanishName?: string;
 
+  @IsUUID()
+  @IsOptional()
+  productTypeId?: string | null;
+
   @IsString()
   @IsOptional()
   note?: string;
