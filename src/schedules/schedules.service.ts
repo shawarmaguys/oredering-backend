@@ -193,12 +193,10 @@ export class SchedulesService implements OnModuleInit {
         try {
           const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
           const formUrl = `${frontendUrl}/dashboard?recordId=${stockRecord.id}`;
-          const text = `🔔 *PLEASE IGNORE THIS TEST MESSAGE* 🔔\n` +
-            `A new stock record count has been initiated for *${schedule.location.name}* (Vendor: *${schedule.vendor.displayName}*).\n` +
-            `Please complete the stock recording as soon as possible.\n` +
-            `• *Record ID:* \`${stockRecord.id}\`\n` +
-            `• *Channel:* #${slackChannel}\n\n` +
-            `👉 *<${formUrl}|Click here to open the Stock Recording Form>*`;
+          const text = `🔔 *New Stock Count* 🔔\n` +
+            `A new stock count has been initiated for *${schedule.location.name}* (Vendor: *${schedule.vendor.displayName}*).\n` +
+            `Please complete the stock count as soon as possible.\n` +
+            `*<${formUrl}|Click here to open the Stock Recording Form>*`;
 
           const targetChannel = slackChannel.startsWith('#') ? slackChannel : `#${slackChannel}`;
           const response = await fetch('https://slack.com/api/chat.postMessage', {
