@@ -78,6 +78,7 @@ model Vendor {
   displayName     String           @map("display_name")
   channelName     String?          @map("channel_name")
   email           String?
+  otherEmails     String?          @map("other_emails")
   address1        String?
   address2        String?
   address3        String?

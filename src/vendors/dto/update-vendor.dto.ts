@@ -15,6 +15,10 @@ export class UpdateVendorDto {
 
   @IsString()
   @IsOptional()
+  otherEmails?: string;
+
+  @IsString()
+  @IsOptional()
   address1?: string;
 
   @IsString()

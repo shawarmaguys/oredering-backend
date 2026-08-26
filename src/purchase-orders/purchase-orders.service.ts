@@ -86,7 +86,7 @@ export class PurchaseOrdersService {
         select: {
           id: true,
           vendorId: true,
-          vendor: { select: { id: true, displayName: true, email: true } },
+          vendor: { select: { id: true, displayName: true, email: true, otherEmails: true } },
           locationId: true,
           location: { select: { id: true, name: true } },
           stockRecordId: true,
