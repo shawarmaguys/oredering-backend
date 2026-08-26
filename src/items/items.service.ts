@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateItemDto } from './dto/create-item.dto';
+import { BulkUploadDto } from './dto/bulk-item.dto';
 import { AuthUser, validateLocationAccess } from '../common/helpers/location-auth.helper';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -299,5 +300,272 @@ export class ItemsService {
         data: { isActive: false },
       }),
     ]);
+  }
+
+  async validateBulkItems(dto: BulkUploadDto) {
+    if (!dto.items || !Array.isArray(dto.items) || dto.items.length === 0) {
+      throw new BadRequestException('No items provided in bulk upload payload.');
+    }
+
+    const vendors = await this.prisma.vendor.findMany({ select: { id: true, displayName: true } });
+    const vendorByName = new Map(vendors.map((v) => [v.displayName.trim().toLowerCase(), v]));
+    const vendorById = new Map(vendors.map((v) => [v.id, v]));
+
+    const productTypes = await this.prisma.productType.findMany({ select: { id: true, name: true } });
+    const typeByName = new Map(productTypes.map((t) => [t.name.trim().toLowerCase(), t]));
+    const typeById = new Map(productTypes.map((t) => [t.id, t]));
+
+    const items = await this.prisma.item.findMany({
+      select: { id: true, displayName: true, productCode: true, vendorId: true },
+    });
+    const itemByName = new Map(
+      items.map((i) => [i.displayName.trim().toLowerCase(), i])
+    );
+    const itemByCode = new Map(
+      items.filter((i) => i.productCode).map((i) => [i.productCode!.trim().toLowerCase(), i])
+    );
+
+    const rowResults: any[] = [];
+
+    for (let i = 0; i < dto.items.length; i++) {
+      const rawRow = dto.items[i];
+      const errors: string[] = [];
+
+      const displayName = rawRow.displayName ? String(rawRow.displayName).trim() : '';
+      const baseUnitName = rawRow.baseUnitName ? String(rawRow.baseUnitName).trim() : '';
+      const displayUnitName = rawRow.displayUnitName ? String(rawRow.displayUnitName).trim() : undefined;
+      const productCode = rawRow.productCode ? String(rawRow.productCode).trim() : undefined;
+      const spanishName = rawRow.spanishName ? String(rawRow.spanishName).trim() : undefined;
+      const note = rawRow.note ? String(rawRow.note).trim() : undefined;
+      const vendorName = rawRow.vendorName ? String(rawRow.vendorName).trim() : undefined;
+      const vendorId = rawRow.vendorId ? String(rawRow.vendorId).trim() : undefined;
+      const productTypeName = rawRow.productTypeName ? String(rawRow.productTypeName).trim() : undefined;
+      const productTypeId = rawRow.productTypeId ? String(rawRow.productTypeId).trim() : undefined;
+
+      let multiplier: number | undefined = undefined;
+      if (rawRow.multiplier !== undefined && rawRow.multiplier !== null && String(rawRow.multiplier).trim() !== '') {
+        multiplier = Number(rawRow.multiplier);
+      }
+
+      let parLevel: number | undefined = undefined;
+      if (rawRow.parLevel !== undefined && rawRow.parLevel !== null && String(rawRow.parLevel).trim() !== '') {
+        parLevel = Number(rawRow.parLevel);
+      }
+
+      let isActive: boolean = true;
+      if (rawRow.isActive !== undefined && rawRow.isActive !== null) {
+        if (typeof rawRow.isActive === 'boolean') {
+          isActive = rawRow.isActive;
+        } else {
+          const str = String(rawRow.isActive).trim().toLowerCase();
+          if (str === 'false' || str === '0' || str === 'inactive' || str === 'no') {
+            isActive = false;
+          }
+        }
+      }
+
+      if (!displayName) {
+        errors.push('Product Name is required.');
+      }
+      if (!baseUnitName) {
+        errors.push('Base Unit Name is required.');
+      }
+
+      let matchedVendorId: string | null = null;
+      let matchedVendorName: string | null = null;
+
+      if (vendorId) {
+        const v = vendorById.get(vendorId);
+        if (v) {
+          matchedVendorId = v.id;
+          matchedVendorName = v.displayName;
+        } else {
+          errors.push(`Vendor ID '${vendorId}' not found.`);
+        }
+      } else if (vendorName) {
+        const v = vendorByName.get(vendorName.toLowerCase());
+        if (v) {
+          matchedVendorId = v.id;
+          matchedVendorName = v.displayName;
+        } else {
+          errors.push(`Vendor '${vendorName}' does not exist in system.`);
+        }
+      } else {
+        errors.push('Vendor Name or Vendor ID is required.');
+      }
+
+      let matchedProductTypeId: string | null = null;
+      let matchedProductTypeName: string | null = null;
+
+      if (productTypeId) {
+        const pt = typeById.get(productTypeId);
+        if (pt) {
+          matchedProductTypeId = pt.id;
+          matchedProductTypeName = pt.name;
+        } else {
+          errors.push(`Category ID '${productTypeId}' not found.`);
+        }
+      } else if (productTypeName) {
+        const pt = typeByName.get(productTypeName.toLowerCase());
+        if (pt) {
+          matchedProductTypeId = pt.id;
+          matchedProductTypeName = pt.name;
+        } else {
+          matchedProductTypeName = productTypeName;
+        }
+      }
+
+      if (multiplier !== undefined && (isNaN(multiplier) || multiplier <= 0)) {
+        errors.push('Multiplier must be a number greater than 0.');
+      }
+
+      if (parLevel !== undefined && (isNaN(parLevel) || parLevel < 0)) {
+        errors.push('PAR Level must be a number >= 0.');
+      }
+
+      let isDuplicate = false;
+
+      // Check if product name already exists (case-insensitive)
+      if (displayName) {
+        const existingByName = itemByName.get(displayName.toLowerCase());
+        if (existingByName) {
+          errors.push(`Warning: A product with name "${displayName}" already exists in the catalog. Updating existing products is disabled; only new products can be added.`);
+          isDuplicate = true;
+        }
+      }
+
+      // Check if product code already exists (case-insensitive)
+      if (productCode && !isDuplicate) {
+        const existingByCode = itemByCode.get(productCode.toLowerCase());
+        if (existingByCode) {
+          errors.push(`Warning: A product with code/SKU "${productCode}" already exists in the catalog.`);
+          isDuplicate = true;
+        }
+      }
+
+      let action: 'CREATE' | 'UPDATE' | 'INVALID' = 'CREATE';
+      if (errors.length > 0) {
+        action = 'INVALID';
+      }
+
+      rowResults.push({
+        rowNumber: i + 1,
+        action,
+        isDuplicate,
+        errors,
+        data: {
+          id: rawRow.id,
+          displayName,
+          baseUnitName,
+          displayUnitName,
+          multiplier: multiplier !== undefined ? multiplier : 1,
+          vendorId: matchedVendorId || undefined,
+          vendorName: matchedVendorName || vendorName,
+          productTypeId: matchedProductTypeId || undefined,
+          productTypeName: matchedProductTypeName || productTypeName,
+          productCode,
+          spanishName,
+          note,
+          parLevel,
+          isActive,
+        },
+      });
+    }
+
+    const validCount = rowResults.filter((r) => r.action === 'CREATE').length;
+    const invalidCount = rowResults.filter((r) => r.action === 'INVALID').length;
+    const duplicateCount = rowResults.filter((r) => r.isDuplicate).length;
+    const createCount = validCount;
+
+    return {
+      total: rowResults.length,
+      validCount,
+      invalidCount,
+      createCount,
+      updateCount: 0,
+      duplicateCount,
+      rows: rowResults,
+    };
+  }
+
+  async processBulkUpload(dto: BulkUploadDto) {
+    const validation = await this.validateBulkItems(dto);
+    const validRows = validation.rows.filter((r) => r.action === 'CREATE');
+
+    if (validRows.length === 0) {
+      throw new BadRequestException('No new valid products found to add. Duplicate or invalid items were skipped.');
+    }
+
+    let createdCount = 0;
+
+    for (const row of validRows) {
+      const itemData = row.data;
+
+      let productTypeId = itemData.productTypeId;
+      if (!productTypeId && itemData.productTypeName && itemData.productTypeName.trim()) {
+        const cleanCatName = itemData.productTypeName.trim();
+        let pt = await this.prisma.productType.findUnique({
+          where: { name: cleanCatName },
+        });
+        if (!pt) {
+          pt = await this.prisma.productType.create({
+            data: { name: cleanCatName },
+          });
+        }
+        productTypeId = pt.id;
+      }
+
+      const baseUnitName = itemData.baseUnitName;
+      const displayUnitName = itemData.displayUnitName && itemData.displayUnitName.trim() !== ''
+        ? itemData.displayUnitName.trim()
+        : baseUnitName;
+      const multiplier = itemData.multiplier ?? 1;
+
+      const newItem = await this.prisma.item.create({
+        data: {
+          displayName: itemData.displayName,
+          baseUnitName,
+          displayUnitName,
+          multiplier,
+          vendorId: itemData.vendorId,
+          productTypeId: productTypeId || null,
+          productCode: itemData.productCode || null,
+          spanishName: itemData.spanishName || null,
+          note: itemData.note || null,
+          isActive: itemData.isActive ?? true,
+        },
+      });
+
+      let locationsToAssign: string[] = [];
+      if (dto.locationId) {
+        locationsToAssign = [dto.locationId];
+      } else {
+        const allLocations = await this.prisma.location.findMany({ select: { id: true } });
+        locationsToAssign = allLocations.map((l) => l.id);
+      }
+
+      if (locationsToAssign.length > 0) {
+        await this.prisma.locationItem.createMany({
+          data: locationsToAssign.map((locId) => ({
+            locationId: locId,
+            itemId: newItem.id,
+            parLevel: itemData.parLevel ?? 0,
+            isActive: true,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      createdCount++;
+    }
+
+    return {
+      success: true,
+      totalCount: dto.items.length,
+      processedCount: validRows.length,
+      createdCount,
+      updatedCount: 0,
+      invalidCount: validation.invalidCount,
+    };
   }
 }

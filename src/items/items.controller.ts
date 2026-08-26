@@ -14,6 +14,7 @@ import {
 import { ItemsService } from './items.service';
 import { CreateItemDto } from './dto/create-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
+import { BulkUploadDto } from './dto/bulk-item.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -25,6 +26,20 @@ import type { AuthUser } from '../common/helpers/location-auth.helper';
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ItemsController {
   constructor(private readonly itemsService: ItemsService) {}
+
+  @Post('bulk-validate')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async bulkValidate(@Body() bulkUploadDto: BulkUploadDto) {
+    return this.itemsService.validateBulkItems(bulkUploadDto);
+  }
+
+  @Post('bulk-upload')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async bulkUpload(@Body() bulkUploadDto: BulkUploadDto) {
+    return this.itemsService.processBulkUpload(bulkUploadDto);
+  }
 
   @Post()
   @Roles(UserRole.ADMIN, UserRole.SUPER_MANAGER, UserRole.MANAGER)
