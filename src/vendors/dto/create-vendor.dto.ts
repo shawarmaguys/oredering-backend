@@ -32,4 +32,11 @@ export class CreateVendorDto {
   @IsUUID()
   @IsNotEmpty()
   departmentId: string;
+
+  @IsUUID()
+  @IsOptional()
+  locationId?: string;
+
+  @IsOptional()
+  locationIds?: string[];
 }

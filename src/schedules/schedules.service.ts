@@ -93,6 +93,7 @@ export class SchedulesService implements OnModuleInit {
 
   async findAll() {
     return this.prisma.schedule.findMany({
+      where: { isActive: true },
       include: {
         location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
         vendor: true,
@@ -132,7 +133,10 @@ export class SchedulesService implements OnModuleInit {
     if (!schedule) {
       throw new NotFoundException(`Schedule with ID ${id} not found`);
     }
-    return this.prisma.schedule.delete({ where: { id } });
+    return this.prisma.schedule.update({
+      where: { id },
+      data: { isActive: false },
+    });
   }
 
   async trigger(id: string) {

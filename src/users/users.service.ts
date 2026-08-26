@@ -1,7 +1,8 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -10,6 +11,10 @@ export class UsersService {
 
   async create(createUserDto: CreateUserDto) {
     const { fullName, email, password, role, locationIds } = createUserDto;
+
+    if (role === UserRole.MANAGER && locationIds && locationIds.length > 1) {
+      throw new BadRequestException('Managers can only be assigned to a single store location.');
+    }
 
     // Check if email already exists
     const existing = await this.prisma.user.findUnique({
@@ -89,6 +94,11 @@ export class UsersService {
     }
 
     const { locationIds, password, email, ...rest } = updateUserDto;
+
+    const effectiveRole = updateUserDto.role || user.role;
+    if (effectiveRole === UserRole.MANAGER && locationIds && locationIds.length > 1) {
+      throw new BadRequestException('Managers can only be assigned to a single store location.');
+    }
 
     const data: any = { ...rest };
     if (password) {

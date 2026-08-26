@@ -1,13 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateItemDto } from './dto/create-item.dto';
+import { AuthUser, validateLocationAccess } from '../common/helpers/location-auth.helper';
 
 @Injectable()
 export class ItemsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createItemDto: CreateItemDto) {
-    const { vendorId, ...itemData } = createItemDto;
+    const { vendorId, locationId, parLevel, ...itemData } = createItemDto;
 
     // Check if vendor exists
     const vendor = await this.prisma.vendor.findUnique({
@@ -25,7 +26,7 @@ export class ItemsService {
       ? (itemData.multiplier !== undefined && itemData.multiplier !== null ? itemData.multiplier : 1)
       : 1;
 
-    return this.prisma.item.create({
+    const item = await this.prisma.item.create({
       data: {
         ...itemData,
         baseUnitName,
@@ -33,9 +34,35 @@ export class ItemsService {
         multiplier,
         vendorId,
       },
+    });
+
+    // Auto-create LocationItem records
+    let locationsToAssign: string[] = [];
+    if (locationId) {
+      locationsToAssign = [locationId];
+    } else {
+      const allLocations = await this.prisma.location.findMany({ select: { id: true } });
+      locationsToAssign = allLocations.map((l) => l.id);
+    }
+
+    if (locationsToAssign.length > 0) {
+      await this.prisma.locationItem.createMany({
+        data: locationsToAssign.map((locId) => ({
+          locationId: locId,
+          itemId: item.id,
+          parLevel: parLevel ?? 0,
+          isActive: true,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    return this.prisma.item.findUnique({
+      where: { id: item.id },
       include: {
         vendor: true,
         productType: true,
+        locationItems: true,
       },
     });
   }
@@ -43,18 +70,32 @@ export class ItemsService {
   async findAll(options: {
     vendorId?: string;
     productTypeId?: string;
+    locationId?: string;
+    user?: AuthUser;
     search?: string;
     page?: number;
     limit?: number;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
   } = {}) {
-    const { vendorId, productTypeId, search, page = 1, limit = 50, sortBy, sortOrder = 'asc' } = options;
+    const { vendorId, productTypeId, locationId, user, search, page = 1, limit = 50, sortBy, sortOrder = 'asc' } = options;
     const skip = (page - 1) * limit;
+
+    const allowedLocations = validateLocationAccess(user, locationId);
 
     const where: any = { isActive: true };
     if (vendorId) where.vendorId = vendorId;
     if (productTypeId) where.productTypeId = productTypeId;
+
+    if (allowedLocations !== undefined) {
+      where.locationItems = {
+        some: {
+          locationId: { in: allowedLocations },
+          isActive: true,
+        },
+      };
+    }
+
     if (search) {
       where.OR = [
         { displayName: { contains: search, mode: 'insensitive' } },
@@ -82,6 +123,9 @@ export class ItemsService {
         include: {
           vendor: true,
           productType: true,
+          locationItems: locationId && locationId !== 'all'
+            ? { where: { locationId, isActive: true } }
+            : { where: { isActive: true } },
         },
         orderBy,
         skip,
@@ -143,7 +187,30 @@ export class ItemsService {
     });
   }
 
-  async remove(id: string) {
+  async assignToLocation(itemId: string, locationId: string, parLevel = 0) {
+    const item = await this.prisma.item.findUnique({ where: { id: itemId } });
+    if (!item) throw new NotFoundException(`Item with ID ${itemId} not found`);
+
+    const location = await this.prisma.location.findUnique({ where: { id: locationId } });
+    if (!location) throw new NotFoundException(`Location with ID ${locationId} not found`);
+
+    return this.prisma.locationItem.upsert({
+      where: {
+        locationId_itemId: { locationId, itemId },
+      },
+      create: { locationId, itemId, parLevel, isActive: true },
+      update: { isActive: true },
+    });
+  }
+
+  async removeFromLocation(itemId: string, locationId: string) {
+    return this.prisma.locationItem.updateMany({
+      where: { itemId, locationId },
+      data: { isActive: false },
+    });
+  }
+
+  async remove(id: string, locationId?: string) {
     const item = await this.prisma.item.findUnique({
       where: { id },
     });
@@ -151,9 +218,18 @@ export class ItemsService {
       throw new NotFoundException(`Item with ID ${id} not found`);
     }
 
+    if (locationId) {
+      await this.prisma.locationItem.updateMany({
+        where: { itemId: id, locationId },
+        data: { isActive: false },
+      });
+      return;
+    }
+
     await this.prisma.$transaction([
-      this.prisma.locationItem.deleteMany({
+      this.prisma.locationItem.updateMany({
         where: { itemId: id },
+        data: { isActive: false },
       }),
       this.prisma.item.update({
         where: { id },

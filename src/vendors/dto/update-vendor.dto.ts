@@ -32,4 +32,7 @@ export class UpdateVendorDto {
   @IsUUID()
   @IsOptional()
   departmentId?: string;
+
+  @IsOptional()
+  locationIds?: string[];
 }

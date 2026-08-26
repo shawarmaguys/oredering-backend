@@ -32,6 +32,7 @@ model Location {
   slackUserToken      String?              @map("slack_user_token")
   locationDepartments LocationDepartment[]
   locationItems       LocationItem[]
+  locationVendors     LocationVendor[]
   purchaseOrders      PurchaseOrder[]
   schedules           Schedule[]
   stockRecords        StockRecord[]
@@ -73,23 +74,35 @@ model LocationDepartment {
 }
 
 model Vendor {
-  id             String          @id @default(uuid()) @db.Uuid
-  displayName    String          @map("display_name")
-  channelName    String?         @map("channel_name")
-  email          String?
-  address1       String?
-  address2       String?
-  address3       String?
-  phone          String?
-  departmentId   String          @map("department_id") @db.Uuid
-  createdAt      DateTime        @default(now()) @map("created_at")
-  isActive       Boolean         @default(true) @map("is_active")
-  items          Item[]
-  purchaseOrders PurchaseOrder[]
-  schedules      Schedule[]
-  department     Department      @relation(fields: [departmentId], references: [id])
+  id              String           @id @default(uuid()) @db.Uuid
+  displayName     String           @map("display_name")
+  channelName     String?          @map("channel_name")
+  email           String?
+  address1        String?
+  address2        String?
+  address3        String?
+  phone           String?
+  departmentId    String           @map("department_id") @db.Uuid
+  createdAt       DateTime         @default(now()) @map("created_at")
+  isActive        Boolean          @default(true) @map("is_active")
+  items           Item[]
+  purchaseOrders  PurchaseOrder[]
+  schedules       Schedule[]
+  locationVendors LocationVendor[]
+  department      Department       @relation(fields: [departmentId], references: [id])
 
   @@map("vendors")
+}
+
+model LocationVendor {
+  locationId String   @map("location_id") @db.Uuid
+  vendorId   String   @map("vendor_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  vendor     Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@id([locationId, vendorId])
+  @@map("location_vendors")
 }
 
 model ProductType {

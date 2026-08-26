@@ -37,4 +37,13 @@ export class CreateItemDto {
   @IsString()
   @IsOptional()
   note?: string;
+
+  @IsUUID()
+  @IsOptional()
+  locationId?: string;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  parLevel?: number;
 }
