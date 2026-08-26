@@ -166,6 +166,14 @@ export class ItemsService {
 
     const where: any = {
       isActive: true,
+      vendor: {
+        isActive: true,
+        locationVendors: {
+          some: {
+            locationId: locationId,
+          },
+        },
+      },
       locationItems: {
         none: {
           locationId: locationId,
