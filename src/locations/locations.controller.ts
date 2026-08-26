@@ -33,6 +33,12 @@ export class LocationsController {
     return this.locationsService.update(id, updateLocationDto);
   }
 
+  @Delete(':id')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_MANAGER)
+  async remove(@Param('id') id: string) {
+    return this.locationsService.remove(id);
+  }
+
   @Get(':id/items')
   async getLocationItems(@Param('id') id: string) {
     return this.locationsService.getLocationItems(id);

@@ -283,4 +283,56 @@ export class LocationsService {
       },
     });
   }
+
+  async remove(id: string) {
+    const existing = await this.prisma.location.findUnique({
+      where: { id },
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`Location with ID ${id} not found`);
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Delete location-vendor relations
+      await tx.locationVendor.deleteMany({
+        where: { locationId: id },
+      });
+
+      // 2. Delete location-product relations
+      await tx.locationItem.deleteMany({
+        where: { locationId: id },
+      });
+
+      // 3. Delete location-department relations
+      await tx.locationDepartment.deleteMany({
+        where: { locationId: id },
+      });
+
+      // 4. Delete user-location relations
+      await tx.userLocation.deleteMany({
+        where: { locationId: id },
+      });
+
+      // 5. Delete schedules for location
+      await tx.schedule.deleteMany({
+        where: { locationId: id },
+      });
+
+      // 6. Delete stock records for location (StockRecordItems cascade)
+      await tx.stockRecord.deleteMany({
+        where: { locationId: id },
+      });
+
+      // 7. Delete purchase orders for location (PurchaseOrderItems cascade)
+      await tx.purchaseOrder.deleteMany({
+        where: { locationId: id },
+      });
+
+      // 8. Delete location itself
+      return tx.location.delete({
+        where: { id },
+      });
+    });
+  }
 }
