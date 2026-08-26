@@ -49,8 +49,8 @@ export class PurchaseOrdersController {
     return this.purchaseOrdersService.findAll(
       user,
       status,
-      page ? parseInt(page, 10) : 1,
-      limit ? parseInt(limit, 10) : 25,
+      page ? Number.parseInt(page, 10) : 1,
+      limit ? Number.parseInt(limit, 10) : 25,
     );
   }
 

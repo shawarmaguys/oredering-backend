@@ -66,8 +66,8 @@ export class ItemsController {
       locationId,
       user,
       search,
-      page: page ? parseInt(page, 10) : 1,
-      limit: limit ? parseInt(limit, 10) : 50,
+      page: page ? Number.parseInt(page, 10) : 1,
+      limit: limit ? Number.parseInt(limit, 10) : 50,
       sortBy,
       sortOrder,
     });

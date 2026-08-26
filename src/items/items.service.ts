@@ -482,11 +482,11 @@ export class ItemsService {
         }
       }
 
-      if (multiplier !== undefined && (isNaN(multiplier) || multiplier <= 0)) {
+      if (multiplier !== undefined && (Number.isNaN(multiplier) || multiplier <= 0)) {
         errors.push('Multiplier must be a number greater than 0.');
       }
 
-      if (parLevel !== undefined && (isNaN(parLevel) || parLevel < 0)) {
+      if (parLevel !== undefined && (Number.isNaN(parLevel) || parLevel < 0)) {
         errors.push('PAR Level must be a number >= 0.');
       }
 

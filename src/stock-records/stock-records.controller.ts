@@ -45,8 +45,8 @@ export class StockRecordsController {
   ) {
     return this.stockRecordsService.findAll(
       user,
-      page ? parseInt(page, 10) : 1,
-      limit ? parseInt(limit, 10) : 25,
+      page ? Number.parseInt(page, 10) : 1,
+      limit ? Number.parseInt(limit, 10) : 25,
     );
   }
 
