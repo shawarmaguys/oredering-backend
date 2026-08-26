@@ -1,7 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateItemDto } from './dto/create-item.dto';
 import { AuthUser, validateLocationAccess } from '../common/helpers/location-auth.helper';
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isValidUUID(id?: string): boolean {
+  if (!id) return false;
+  return UUID_REGEX.test(id);
+}
 
 @Injectable()
 export class ItemsService {
@@ -79,6 +86,11 @@ export class ItemsService {
     sortOrder?: 'asc' | 'desc';
   } = {}) {
     const { vendorId, productTypeId, locationId, user, search, page = 1, limit = 50, sortBy, sortOrder = 'asc' } = options;
+
+    if (!locationId || !isValidUUID(locationId)) {
+      throw new BadRequestException('location_id query parameter is required and must be a valid UUID.');
+    }
+
     const skip = (page - 1) * limit;
 
     const allowedLocations = validateLocationAccess(user, locationId);
@@ -87,14 +99,12 @@ export class ItemsService {
     if (vendorId) where.vendorId = vendorId;
     if (productTypeId) where.productTypeId = productTypeId;
 
-    if (allowedLocations !== undefined) {
-      where.locationItems = {
-        some: {
-          locationId: { in: allowedLocations },
-          isActive: true,
-        },
-      };
-    }
+    where.locationItems = {
+      some: {
+        locationId: locationId,
+        isActive: true,
+      },
+    };
 
     if (search) {
       where.OR = [
@@ -123,9 +133,7 @@ export class ItemsService {
         include: {
           vendor: true,
           productType: true,
-          locationItems: locationId && locationId !== 'all'
-            ? { where: { locationId, isActive: true } }
-            : { where: { isActive: true } },
+          locationItems: { where: { locationId, isActive: true } },
         },
         orderBy,
         skip,

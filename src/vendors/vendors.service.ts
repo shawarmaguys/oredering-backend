@@ -57,6 +57,10 @@ export class VendorsService {
         })),
         skipDuplicates: true,
       });
+
+      for (const locId of targetLocationIds) {
+        await this.enableVendorProductsForLocation(vendor.id, locId);
+      }
     }
 
     return this.prisma.vendor.findUnique({
@@ -66,6 +70,30 @@ export class VendorsService {
         locationVendors: { select: { locationId: true } },
       },
     });
+  }
+
+  private async enableVendorProductsForLocation(vendorId: string, locationId: string) {
+    const vendorItems = await this.prisma.item.findMany({
+      where: { vendorId, isActive: true },
+      select: { id: true },
+    });
+
+    for (const item of vendorItems) {
+      await this.prisma.locationItem.upsert({
+        where: {
+          locationId_itemId: { locationId, itemId: item.id },
+        },
+        create: {
+          locationId,
+          itemId: item.id,
+          parLevel: 0,
+          isActive: true,
+        },
+        update: {
+          isActive: true,
+        },
+      });
+    }
   }
 
   async findAll(options?: { departmentId?: string; locationId?: string; user?: AuthUser }) {
@@ -159,22 +187,52 @@ export class VendorsService {
     });
 
     if (locationIds !== undefined) {
+      const currentLocVendors = await this.prisma.locationVendor.findMany({
+        where: { vendorId: id },
+        select: { locationId: true },
+      });
+      const currentLocIds = currentLocVendors.map((lv) => lv.locationId);
+      const removedLocIds = currentLocIds.filter((locId) => !locationIds.includes(locId));
+      const addedLocIds = locationIds.filter((locId) => !currentLocIds.includes(locId));
+
       await this.prisma.$transaction([
         this.prisma.locationVendor.deleteMany({
           where: { vendorId: id },
         }),
         ...(locationIds.length > 0
           ? [
-            this.prisma.locationVendor.createMany({
-              data: locationIds.map((locId) => ({
-                vendorId: id,
-                locationId: locId,
-              })),
-              skipDuplicates: true,
-            }),
-          ]
+              this.prisma.locationVendor.createMany({
+                data: locationIds.map((locId) => ({
+                  vendorId: id,
+                  locationId: locId,
+                })),
+                skipDuplicates: true,
+              }),
+            ]
+          : []),
+        ...(removedLocIds.length > 0
+          ? [
+              this.prisma.locationItem.updateMany({
+                where: {
+                  locationId: { in: removedLocIds },
+                  item: { vendorId: id },
+                },
+                data: { isActive: false },
+              }),
+              this.prisma.schedule.updateMany({
+                where: {
+                  locationId: { in: removedLocIds },
+                  vendorId: id,
+                },
+                data: { isActive: false },
+              }),
+            ]
           : []),
       ]);
+
+      for (const addedLocId of addedLocIds) {
+        await this.enableVendorProductsForLocation(id, addedLocId);
+      }
 
       return this.prisma.vendor.findUnique({
         where: { id },
@@ -195,19 +253,36 @@ export class VendorsService {
     const location = await this.prisma.location.findUnique({ where: { id: locationId } });
     if (!location) throw new NotFoundException(`Location with ID "${locationId}" not found`);
 
-    return this.prisma.locationVendor.upsert({
+    const locVendor = await this.prisma.locationVendor.upsert({
       where: {
         locationId_vendorId: { locationId, vendorId },
       },
       create: { locationId, vendorId },
       update: {},
     });
+
+    await this.enableVendorProductsForLocation(vendorId, locationId);
+
+    return locVendor;
   }
 
   async removeFromLocation(vendorId: string, locationId: string) {
-    return this.prisma.locationVendor.deleteMany({
-      where: { vendorId, locationId },
-    });
+    await this.prisma.$transaction([
+      this.prisma.locationVendor.deleteMany({
+        where: { vendorId, locationId },
+      }),
+      this.prisma.locationItem.updateMany({
+        where: {
+          locationId,
+          item: { vendorId },
+        },
+        data: { isActive: false },
+      }),
+      this.prisma.schedule.updateMany({
+        where: { vendorId, locationId },
+        data: { isActive: false },
+      }),
+    ]);
   }
 
   async getLocationAssignments(vendorId: string) {
@@ -273,10 +348,23 @@ export class VendorsService {
     }
 
     if (locationId) {
-      // Unassign vendor from this specific location ONLY
-      await this.prisma.locationVendor.deleteMany({
-        where: { vendorId: id, locationId },
-      });
+      // Unassign vendor from this specific location ONLY, along with its location items and schedules
+      await this.prisma.$transaction([
+        this.prisma.locationVendor.deleteMany({
+          where: { vendorId: id, locationId },
+        }),
+        this.prisma.locationItem.updateMany({
+          where: {
+            locationId,
+            item: { vendorId: id },
+          },
+          data: { isActive: false },
+        }),
+        this.prisma.schedule.updateMany({
+          where: { vendorId: id, locationId },
+          data: { isActive: false },
+        }),
+      ]);
       return;
     }
 

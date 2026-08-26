@@ -77,9 +77,17 @@ export class LocationsService {
       throw new NotFoundException(`Location with ID ${locationId} not found`);
     }
 
-    // Fetch all items in catalog
+    // Fetch items assigned to this location
     const items = await this.prisma.item.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        locationItems: {
+          some: {
+            locationId,
+            isActive: true,
+          },
+        },
+      },
       include: {
         vendor: true,
         productType: true,
@@ -89,7 +97,7 @@ export class LocationsService {
 
     // Fetch current locationItems
     const locationItems = await this.prisma.locationItem.findMany({
-      where: { locationId },
+      where: { locationId, isActive: true },
     });
 
     const locationItemMap = new Map(locationItems.map((li) => [li.itemId, li]));
