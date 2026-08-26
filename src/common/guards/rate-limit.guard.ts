@@ -14,7 +14,9 @@ interface RateLimitOptions {
 
 const hitsMap = new Map<string, number[]>();
 
-export function createRateLimitGuard(options: RateLimitOptions = { windowMs: 60000, max: 10 }) {
+const DEFAULT_RATE_LIMIT_OPTIONS: RateLimitOptions = { windowMs: 60000, max: 10 };
+
+export function createRateLimitGuard(options: RateLimitOptions = DEFAULT_RATE_LIMIT_OPTIONS) {
   @Injectable()
   class CustomRateLimitGuard implements CanActivate {
     canActivate(context: ExecutionContext): boolean {
