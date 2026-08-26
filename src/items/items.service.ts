@@ -135,6 +135,11 @@ export class ItemsService {
           vendor: true,
           productType: true,
           locationItems: { where: { locationId, isActive: true } },
+          _count: {
+            select: {
+              locationItems: { where: { isActive: true } },
+            },
+          },
         },
         orderBy,
         skip,
@@ -148,6 +153,7 @@ export class ItemsService {
       return {
         ...item,
         parLevel: locItem ? Number(locItem.parLevel) : 0,
+        activeLocationCount: item._count?.locationItems ?? 0,
       };
     });
 
@@ -180,6 +186,9 @@ export class ItemsService {
           locationId: locationId,
           isActive: true,
         },
+        some: {
+          isActive: true,
+        },
       },
     };
 
@@ -192,6 +201,11 @@ export class ItemsService {
         vendor: true,
         productType: true,
         locationItems: { select: { locationId: true, parLevel: true } },
+        _count: {
+          select: {
+            locationItems: { where: { isActive: true } },
+          },
+        },
       },
       orderBy: { displayName: 'asc' },
     });
@@ -199,6 +213,7 @@ export class ItemsService {
     return items.map((item) => ({
       ...item,
       parLevel: item.locationItems?.[0] ? Number(item.locationItems[0].parLevel) : 0,
+      activeLocationCount: item._count?.locationItems ?? 0,
     }));
   }
 
@@ -287,6 +302,17 @@ export class ItemsService {
         where: { itemId: id, locationId },
         data: { isActive: false },
       });
+
+      const remainingActiveCount = await this.prisma.locationItem.count({
+        where: { itemId: id, isActive: true },
+      });
+
+      if (remainingActiveCount === 0) {
+        await this.prisma.item.update({
+          where: { id },
+          data: { isActive: false },
+        });
+      }
       return;
     }
 
@@ -311,11 +337,36 @@ export class ItemsService {
     const vendorByName = new Map(vendors.map((v) => [v.displayName.trim().toLowerCase(), v]));
     const vendorById = new Map(vendors.map((v) => [v.id, v]));
 
+    let activeLocationName: string | null = null;
+    let enabledVendorIdsForLocation: Set<string> | null = null;
+
+    if (dto.locationId) {
+      const location = await this.prisma.location.findUnique({
+        where: { id: dto.locationId },
+        select: { name: true },
+      });
+      if (location) {
+        activeLocationName = location.name;
+      }
+
+      const locVendors = await this.prisma.locationVendor.findMany({
+        where: { locationId: dto.locationId },
+        select: { vendorId: true },
+      });
+      enabledVendorIdsForLocation = new Set(locVendors.map((lv) => lv.vendorId));
+    }
+
+    const allAssignedLocationVendors = await this.prisma.locationVendor.findMany({
+      select: { vendorId: true },
+    });
+    const vendorIdsAssignedToAnyLocation = new Set(allAssignedLocationVendors.map((lv) => lv.vendorId));
+
     const productTypes = await this.prisma.productType.findMany({ select: { id: true, name: true } });
     const typeByName = new Map(productTypes.map((t) => [t.name.trim().toLowerCase(), t]));
     const typeById = new Map(productTypes.map((t) => [t.id, t]));
 
     const items = await this.prisma.item.findMany({
+      where: { isActive: true },
       select: { id: true, displayName: true, productCode: true, vendorId: true },
     });
     const itemByName = new Map(
@@ -392,6 +443,22 @@ export class ItemsService {
         }
       } else {
         errors.push('Vendor Name or Vendor ID is required.');
+      }
+
+      if (matchedVendorId) {
+        if (enabledVendorIdsForLocation) {
+          if (!enabledVendorIdsForLocation.has(matchedVendorId)) {
+            errors.push(
+              `Vendor '${matchedVendorName}' is not enabled for location '${activeLocationName || 'selected location'}'.`
+            );
+          }
+        } else {
+          if (!vendorIdsAssignedToAnyLocation.has(matchedVendorId)) {
+            errors.push(
+              `Vendor '${matchedVendorName}' is not enabled for any store location.`
+            );
+          }
+        }
       }
 
       let matchedProductTypeId: string | null = null;

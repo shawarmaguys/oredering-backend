@@ -137,6 +137,7 @@ export class VendorsService {
         none: {
           locationId: locationId,
         },
+        some: {}, // Vendor MUST be assigned to at least one location!
       },
     };
 
@@ -365,6 +366,17 @@ export class VendorsService {
           data: { isActive: false },
         }),
       ]);
+
+      const remainingLocCount = await this.prisma.locationVendor.count({
+        where: { vendorId: id },
+      });
+
+      if (remainingLocCount === 0) {
+        await this.prisma.vendor.update({
+          where: { id },
+          data: { isActive: false },
+        });
+      }
       return;
     }
 
