@@ -58,6 +58,16 @@ export class ItemsController {
     });
   }
 
+  @Get('unassigned')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_MANAGER)
+  async findUnassigned(
+    @Query('location_id') locationId: string,
+    @Query('vendor_id') vendorId?: string,
+    @Query('product_type_id') productTypeId?: string,
+  ) {
+    return this.itemsService.findUnassigned(locationId, vendorId, productTypeId);
+  }
+
   @Post(':id/locations/:locationId')
   @Roles(UserRole.ADMIN, UserRole.SUPER_MANAGER, UserRole.MANAGER)
   @HttpCode(HttpStatus.CREATED)

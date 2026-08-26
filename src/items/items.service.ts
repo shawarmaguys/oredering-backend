@@ -134,13 +134,55 @@ export class ItemsService {
       this.prisma.item.count({ where }),
     ]);
 
+    const formattedData = data.map((item) => {
+      const locItem = item.locationItems?.[0];
+      return {
+        ...item,
+        parLevel: locItem ? Number(locItem.parLevel) : 0,
+      };
+    });
+
     return {
-      data,
+      data: formattedData,
       total,
       page,
       limit,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  async findUnassigned(locationId: string, vendorId?: string, productTypeId?: string) {
+    if (!locationId) {
+      throw new NotFoundException('location_id query parameter is required.');
+    }
+
+    const where: any = {
+      isActive: true,
+      locationItems: {
+        none: {
+          locationId: locationId,
+          isActive: true,
+        },
+      },
+    };
+
+    if (vendorId) where.vendorId = vendorId;
+    if (productTypeId) where.productTypeId = productTypeId;
+
+    const items = await this.prisma.item.findMany({
+      where,
+      include: {
+        vendor: true,
+        productType: true,
+        locationItems: { select: { locationId: true, parLevel: true } },
+      },
+      orderBy: { displayName: 'asc' },
+    });
+
+    return items.map((item) => ({
+      ...item,
+      parLevel: item.locationItems?.[0] ? Number(item.locationItems[0].parLevel) : 0,
+    }));
   }
 
   async update(id: string, updateItemDto: any) {
@@ -187,19 +229,24 @@ export class ItemsService {
     });
   }
 
-  async assignToLocation(itemId: string, locationId: string, parLevel = 0) {
+  async assignToLocation(itemId: string, locationId: string, parLevel?: number) {
     const item = await this.prisma.item.findUnique({ where: { id: itemId } });
     if (!item) throw new NotFoundException(`Item with ID ${itemId} not found`);
 
     const location = await this.prisma.location.findUnique({ where: { id: locationId } });
     if (!location) throw new NotFoundException(`Location with ID ${locationId} not found`);
 
+    const updateData: any = { isActive: true };
+    if (parLevel !== undefined && parLevel !== null) {
+      updateData.parLevel = parLevel;
+    }
+
     return this.prisma.locationItem.upsert({
       where: {
         locationId_itemId: { locationId, itemId },
       },
-      create: { locationId, itemId, parLevel, isActive: true },
-      update: { isActive: true },
+      create: { locationId, itemId, parLevel: parLevel ?? 0, isActive: true },
+      update: updateData,
     });
   }
 
