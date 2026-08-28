@@ -284,6 +284,105 @@ export class LocationsService {
     });
   }
 
+  async duplicate(sourceId: string, newName: string, copySlackTokens: boolean = false) {
+    const source = await this.prisma.location.findUnique({
+      where: { id: sourceId },
+    });
+    if (!source) {
+      throw new NotFoundException(`Location with ID ${sourceId} not found`);
+    }
+
+    // Check name uniqueness
+    const existing = await this.prisma.location.findUnique({
+      where: { name: newName },
+    });
+    if (existing) {
+      throw new ConflictException(`Location with name "${newName}" already exists`);
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Read all source data in parallel (independent queries)
+      const [locationVendors, locationItems, locationDepts, schedules, newLocation] =
+        await Promise.all([
+          tx.locationVendor.findMany({ where: { locationId: sourceId } }),
+          tx.locationItem.findMany({ where: { locationId: sourceId } }),
+          tx.locationDepartment.findMany({ where: { locationId: sourceId } }),
+          tx.schedule.findMany({ where: { locationId: sourceId } }),
+          tx.location.create({
+            data: {
+              name: newName,
+              address: source.address,
+              phone: source.phone,
+              email: source.email,
+              slackBotToken: copySlackTokens ? source.slackBotToken : null,
+              slackUserToken: copySlackTokens ? source.slackUserToken : null,
+            },
+          }),
+        ]);
+
+      // 2. Write all cloned data in parallel (independent inserts)
+      const writes: Promise<any>[] = [];
+
+      if (locationVendors.length > 0) {
+        writes.push(
+          tx.locationVendor.createMany({
+            data: locationVendors.map((lv) => ({
+              locationId: newLocation.id,
+              vendorId: lv.vendorId,
+            })),
+          }),
+        );
+      }
+
+      if (locationItems.length > 0) {
+        writes.push(
+          tx.locationItem.createMany({
+            data: locationItems.map((li) => ({
+              locationId: newLocation.id,
+              itemId: li.itemId,
+              parLevel: li.parLevel,
+              displayOrder: li.displayOrder,
+              isActive: li.isActive,
+            })),
+          }),
+        );
+      }
+
+      if (locationDepts.length > 0) {
+        writes.push(
+          tx.locationDepartment.createMany({
+            data: locationDepts.map((ld) => ({
+              locationId: newLocation.id,
+              departmentId: ld.departmentId,
+            })),
+          }),
+        );
+      }
+
+      if (schedules.length > 0) {
+        writes.push(
+          tx.schedule.createMany({
+            data: schedules.map((s) => ({
+              locationId: newLocation.id,
+              vendorId: s.vendorId,
+              scheduleType: s.scheduleType,
+              dayOfWeek: s.dayOfWeek,
+              triggerTime: s.triggerTime,
+              isActive: s.isActive,
+              slackChannel: null,
+            })),
+          }),
+        );
+      }
+
+      if (writes.length > 0) {
+        await Promise.all(writes);
+      }
+
+      return newLocation;
+    });
+  }
+
   async remove(id: string) {
     const existing = await this.prisma.location.findUnique({
       where: { id },

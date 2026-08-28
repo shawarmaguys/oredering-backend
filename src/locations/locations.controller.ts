@@ -33,6 +33,16 @@ export class LocationsController {
     return this.locationsService.update(id, updateLocationDto);
   }
 
+  @Post(':id/duplicate')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_MANAGER)
+  @HttpCode(HttpStatus.CREATED)
+  async duplicate(
+    @Param('id') id: string,
+    @Body() dto: { name: string; copySlackTokens?: boolean },
+  ) {
+    return this.locationsService.duplicate(id, dto.name, dto.copySlackTokens);
+  }
+
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.SUPER_MANAGER)
   async remove(@Param('id') id: string) {
