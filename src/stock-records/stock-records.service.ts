@@ -286,11 +286,11 @@ export class StockRecordsService {
 
               const totalBasic = basicQty + frontBasicQty;
               const totalSec = secondaryQty + frontSecondaryQty;
-              const countedQty = totalSec + totalBasic / multiplier;
 
-              const roundedNormalized = Math.round(countedQty);
-              const roundedPar = Math.round(parLevel);
-              const suggestedQty = Math.max(0, roundedPar - roundedNormalized);
+              const totalNormalizedBase = totalBasic + (totalSec * multiplier);
+              const parLevelBase = parLevel;
+              const deficitBase = Math.max(0, parLevelBase - totalNormalizedBase);
+              const suggestedQty = Math.ceil(deficitBase / multiplier);
 
               poItemsToCreate.push({
                 itemId: ri.itemId,
@@ -298,8 +298,8 @@ export class StockRecordsService {
                 unitName: item.displayUnitName || item.baseUnitName,
                 basicQuantity: totalBasic,
                 secondaryQuantity: totalSec,
-                normalizedQuantity: roundedNormalized,
-                parLevel: roundedPar,
+                normalizedQuantity: totalNormalizedBase,
+                parLevel: parLevelBase,
                 suggestedQuantity: suggestedQty,
               });
             }
