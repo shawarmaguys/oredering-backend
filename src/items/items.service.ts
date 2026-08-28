@@ -99,8 +99,17 @@ export class ItemsService {
     }
 
     const where: any = { isActive: true };
-    if (vendorId) where.vendorId = vendorId;
-    if (productTypeId) where.productTypeId = productTypeId;
+    const andConditions: any[] = [];
+    
+    if (vendorId) {
+      andConditions.push({
+        OR: [
+          { vendorId: vendorId },
+          { backupVendors: { some: { vendorId: vendorId } } }
+        ]
+      });
+    }
+    if (productTypeId) andConditions.push({ productTypeId });
 
     if (locationId) {
       where.locationItems = {
@@ -112,12 +121,18 @@ export class ItemsService {
     }
 
     if (search) {
-      where.OR = [
-        { displayName: { contains: search, mode: 'insensitive' } },
-        { productCode: { contains: search, mode: 'insensitive' } },
-        { spanishName: { contains: search, mode: 'insensitive' } },
-        { note: { contains: search, mode: 'insensitive' } },
-      ];
+      andConditions.push({
+        OR: [
+          { displayName: { contains: search, mode: 'insensitive' } },
+          { productCode: { contains: search, mode: 'insensitive' } },
+          { spanishName: { contains: search, mode: 'insensitive' } },
+          { note: { contains: search, mode: 'insensitive' } },
+        ]
+      });
+    }
+
+    if (andConditions.length > 0) {
+      where.AND = andConditions;
     }
 
     let orderBy: any = { displayName: 'asc' };
@@ -138,6 +153,9 @@ export class ItemsService {
         include: {
           vendor: true,
           productType: true,
+          backupVendors: {
+            include: { vendor: { select: { id: true, displayName: true, departmentId: true } } }
+          },
           locationItems: locationId ? { where: { locationId, isActive: true } } : { where: { isActive: true } },
           _count: {
             select: {
@@ -204,6 +222,9 @@ export class ItemsService {
       include: {
         vendor: true,
         productType: true,
+        backupVendors: {
+          include: { vendor: { select: { id: true, displayName: true } } }
+        },
         locationItems: { select: { locationId: true, parLevel: true } },
         _count: {
           select: {
@@ -261,6 +282,9 @@ export class ItemsService {
       include: {
         vendor: true,
         productType: true,
+        backupVendors: {
+          include: { vendor: { select: { id: true, displayName: true } } }
+        },
       },
     });
   }
@@ -290,6 +314,34 @@ export class ItemsService {
     return this.prisma.locationItem.updateMany({
       where: { itemId, locationId },
       data: { isActive: false },
+    });
+  }
+
+  async addBackupVendor(itemId: string, vendorId: string) {
+    const item = await this.prisma.item.findUnique({ where: { id: itemId } });
+    if (!item) throw new NotFoundException(`Item with ID ${itemId} not found`);
+
+    if (item.vendorId === vendorId) {
+      throw new BadRequestException('Cannot add primary vendor as a backup vendor');
+    }
+
+    const vendor = await this.prisma.vendor.findUnique({ where: { id: vendorId } });
+    if (!vendor) throw new NotFoundException(`Vendor with ID ${vendorId} not found`);
+
+    return this.prisma.itemBackupVendor.create({
+      data: { itemId, vendorId },
+    });
+  }
+
+  async removeBackupVendor(itemId: string, vendorId: string) {
+    const record = await this.prisma.itemBackupVendor.findUnique({
+      where: { itemId_vendorId: { itemId, vendorId } },
+    });
+    if (!record) {
+      throw new NotFoundException('Backup vendor record not found');
+    }
+    await this.prisma.itemBackupVendor.delete({
+      where: { itemId_vendorId: { itemId, vendorId } },
     });
   }
 

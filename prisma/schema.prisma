@@ -91,6 +91,7 @@ model Vendor {
   purchaseOrders  PurchaseOrder[]
   schedules       Schedule[]
   locationVendors LocationVendor[]
+  backupItems     ItemBackupVendor[]
   department      Department       @relation(fields: [departmentId], references: [id])
 
   @@map("vendors")
@@ -138,6 +139,7 @@ model Item {
   locationItems      LocationItem[]
   purchaseOrderItems PurchaseOrderItem[]
   stockRecordItems   StockRecordItem[]
+  backupVendors      ItemBackupVendor[]
 
   @@map("items")
 }
@@ -154,6 +156,19 @@ model LocationItem {
 
   @@unique([locationId, itemId])
   @@map("location_items")
+}
+
+model ItemBackupVendor {
+  id        String   @id @default(uuid()) @db.Uuid
+  itemId    String   @map("item_id") @db.Uuid
+  vendorId  String   @map("vendor_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  item   Item   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, vendorId])
+  @@map("item_backup_vendors")
 }
 
 model StockRecord {

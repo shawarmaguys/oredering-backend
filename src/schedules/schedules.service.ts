@@ -152,14 +152,17 @@ export class SchedulesService implements OnModuleInit {
       throw new NotFoundException(`Schedule with ID ${id} not found`);
     }
 
-    // 1. Fetch active location items for this vendor
+    // 1. Fetch active location items for this vendor (primary or backup)
     const locationItems = await this.prisma.locationItem.findMany({
       where: {
         locationId: schedule.locationId,
         isActive: true,
         item: {
-          vendorId: schedule.vendorId,
           isActive: true,
+          OR: [
+            { vendorId: schedule.vendorId },
+            { backupVendors: { some: { vendorId: schedule.vendorId } } }
+          ]
         },
       },
       include: {

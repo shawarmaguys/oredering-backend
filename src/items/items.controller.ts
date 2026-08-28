@@ -113,6 +113,26 @@ export class ItemsController {
     return this.itemsService.update(id, updateItemDto);
   }
 
+  @Post(':id/backup-vendors')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_MANAGER, UserRole.MANAGER)
+  @HttpCode(HttpStatus.CREATED)
+  async addBackupVendor(
+    @Param('id') id: string,
+    @Body('vendorId') vendorId: string,
+  ) {
+    return this.itemsService.addBackupVendor(id, vendorId);
+  }
+
+  @Delete(':id/backup-vendors/:vendorId')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_MANAGER, UserRole.MANAGER)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async removeBackupVendor(
+    @Param('id') id: string,
+    @Param('vendorId') vendorId: string,
+  ) {
+    await this.itemsService.removeBackupVendor(id, vendorId);
+  }
+
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.SUPER_MANAGER, UserRole.MANAGER)
   @HttpCode(HttpStatus.NO_CONTENT)
