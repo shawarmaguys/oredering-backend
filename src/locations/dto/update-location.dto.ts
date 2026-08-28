@@ -19,6 +19,10 @@ export class UpdateLocationDto {
 
   @IsString()
   @IsOptional()
+  color?: string;
+
+  @IsString()
+  @IsOptional()
   slackBotToken?: string;
 
   @IsString()

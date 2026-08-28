@@ -19,6 +19,10 @@ export class CreateLocationDto {
 
   @IsString()
   @IsOptional()
+  color?: string;
+
+  @IsString()
+  @IsOptional()
   slackBotToken?: string;
 
   @IsString()

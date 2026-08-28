@@ -8,7 +8,7 @@ export class LocationsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createLocationDto: CreateLocationDto) {
-    const { name, address, phone, email, slackBotToken, slackUserToken } = createLocationDto;
+    const { name, address, phone, email, color, slackBotToken, slackUserToken } = createLocationDto;
 
     const existing = await this.prisma.location.findUnique({
       where: { name },
@@ -23,6 +23,7 @@ export class LocationsService {
         address, 
         phone, 
         email, 
+        color: color || null,
         slackBotToken: encryptToken(slackBotToken), 
         slackUserToken: encryptToken(slackUserToken) 
       },
@@ -42,7 +43,7 @@ export class LocationsService {
   }
 
   async update(id: string, updateLocationDto: any) {
-    const { name, address, phone, email, slackBotToken, slackUserToken } = updateLocationDto;
+    const { name, address, phone, email, color, slackBotToken, slackUserToken } = updateLocationDto;
 
     if (name) {
       const existing = await this.prisma.location.findUnique({
@@ -53,7 +54,12 @@ export class LocationsService {
       }
     }
 
-    const data: any = { name, address, phone, email };
+    const data: any = {};
+    if (name !== undefined) data.name = name;
+    if (address !== undefined) data.address = address;
+    if (phone !== undefined) data.phone = phone;
+    if (email !== undefined) data.email = email;
+    if (color !== undefined) data.color = color;
 
     if (slackBotToken !== undefined && slackBotToken !== '••••••••') {
       data.slackBotToken = encryptToken(slackBotToken);
@@ -314,6 +320,7 @@ export class LocationsService {
               address: source.address,
               phone: source.phone,
               email: source.email,
+              color: source.color,
               slackBotToken: copySlackTokens ? source.slackBotToken : null,
               slackUserToken: copySlackTokens ? source.slackUserToken : null,
             },
