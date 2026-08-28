@@ -88,24 +88,28 @@ export class ItemsService {
   } = {}) {
     const { vendorId, productTypeId, locationId, user, search, page = 1, limit = 50, sortBy, sortOrder = 'asc' } = options;
 
-    if (!locationId || !isValidUUID(locationId)) {
-      throw new BadRequestException('location_id query parameter is required and must be a valid UUID.');
+    if (locationId && !isValidUUID(locationId)) {
+      throw new BadRequestException('location_id query parameter must be a valid UUID.');
     }
 
     const skip = (page - 1) * limit;
 
-    const allowedLocations = validateLocationAccess(user, locationId);
+    if (locationId) {
+      validateLocationAccess(user, locationId);
+    }
 
     const where: any = { isActive: true };
     if (vendorId) where.vendorId = vendorId;
     if (productTypeId) where.productTypeId = productTypeId;
 
-    where.locationItems = {
-      some: {
-        locationId: locationId,
-        isActive: true,
-      },
-    };
+    if (locationId) {
+      where.locationItems = {
+        some: {
+          locationId: locationId,
+          isActive: true,
+        },
+      };
+    }
 
     if (search) {
       where.OR = [
@@ -134,7 +138,7 @@ export class ItemsService {
         include: {
           vendor: true,
           productType: true,
-          locationItems: { where: { locationId, isActive: true } },
+          locationItems: locationId ? { where: { locationId, isActive: true } } : { where: { isActive: true } },
           _count: {
             select: {
               locationItems: { where: { isActive: true } },
@@ -366,22 +370,53 @@ export class ItemsService {
     const typeById = new Map(productTypes.map((t) => [t.id, t]));
 
     const items = await this.prisma.item.findMany({
-      where: { isActive: true },
-      select: { id: true, displayName: true, productCode: true, vendorId: true },
+      select: {
+        id: true,
+        displayName: true,
+        baseUnitName: true,
+        displayUnitName: true,
+        multiplier: true,
+        productCode: true,
+        spanishName: true,
+        note: true,
+        vendorId: true,
+        productTypeId: true,
+        isActive: true,
+        locationItems: {
+          select: { locationId: true, parLevel: true, isActive: true },
+        },
+      },
     });
-    const itemByName = new Map(
-      items.map((i) => [i.displayName.trim().toLowerCase(), i])
-    );
-    const itemByCode = new Map(
-      items.filter((i) => i.productCode).map((i) => [i.productCode!.trim().toLowerCase(), i])
-    );
+    const itemById = new Map(items.map((i) => [i.id, i]));
+    
+    const itemsByNameMap = new Map<string, any[]>();
+    for (const item of items) {
+      const nameKey = item.displayName.trim().toLowerCase();
+      if (!itemsByNameMap.has(nameKey)) {
+        itemsByNameMap.set(nameKey, []);
+      }
+      itemsByNameMap.get(nameKey)!.push(item);
+    }
+
+    const itemsByCodeMap = new Map<string, any[]>();
+    for (const item of items) {
+      if (item.productCode) {
+        const codeKey = item.productCode.trim().toLowerCase();
+        if (!itemsByCodeMap.has(codeKey)) {
+          itemsByCodeMap.set(codeKey, []);
+        }
+        itemsByCodeMap.get(codeKey)!.push(item);
+      }
+    }
 
     const rowResults: any[] = [];
+    const seenIdsInPayload = new Set<string>();
 
     for (let i = 0; i < dto.items.length; i++) {
       const rawRow = dto.items[i];
       const errors: string[] = [];
 
+      const rowId = rawRow.id ? String(rawRow.id).trim() : undefined;
       const displayName = rawRow.displayName ? String(rawRow.displayName).trim() : '';
       const baseUnitName = rawRow.baseUnitName ? String(rawRow.baseUnitName).trim() : '';
       const displayUnitName = rawRow.displayUnitName ? String(rawRow.displayUnitName).trim() : undefined;
@@ -490,27 +525,82 @@ export class ItemsService {
         errors.push('PAR Level must be a number >= 0.');
       }
 
+      let action: 'CREATE' | 'UPDATE' | 'UNCHANGED' | 'INVALID' = 'CREATE';
       let isDuplicate = false;
 
-      // Check if product name already exists (case-insensitive)
-      if (displayName) {
-        const existingByName = itemByName.get(displayName.toLowerCase());
-        if (existingByName) {
-          errors.push(`Warning: A product with name "${displayName}" already exists in the catalog. Updating existing products is disabled; only new products can be added.`);
-          isDuplicate = true;
+      let duplicateWarning: string | undefined = undefined;
+
+      if (rowId) {
+        if (seenIdsInPayload.has(rowId)) {
+          errors.push(`Duplicate Product ID '${rowId}' repeated in CSV payload.`);
+        } else {
+          seenIdsInPayload.add(rowId);
+        }
+
+        const existingItem = itemById.get(rowId);
+        if (!existingItem) {
+          errors.push(`Product ID '${rowId}' not found in system database.`);
+        } else {
+          // Check collision if name or code is being changed
+          if (displayName) {
+            const isNameChanged = displayName.trim().toLowerCase() !== existingItem.displayName.trim().toLowerCase();
+            if (isNameChanged) {
+              const sameNameItems = itemsByNameMap.get(displayName.trim().toLowerCase()) || [];
+              const collisionItem = sameNameItems.find((i) => i.id !== rowId);
+              if (collisionItem) {
+                errors.push(`Product name "${displayName}" is already used by another item in catalog.`);
+              }
+            }
+          }
+
+          if (productCode) {
+            const currentCode = (existingItem.productCode || '').trim().toLowerCase();
+            const isCodeChanged = productCode.trim().toLowerCase() !== currentCode;
+            if (isCodeChanged) {
+              const sameCodeItems = itemsByCodeMap.get(productCode.trim().toLowerCase()) || [];
+              const collisionItem = sameCodeItems.find((i) => i.id !== rowId);
+              if (collisionItem) {
+                errors.push(`Product code "${productCode}" is already used by another item in catalog.`);
+              }
+            }
+          }
+
+          // Diff against existing item state to detect specific field modifications
+          const changedFields = this.getItemModifications(existingItem, {
+            displayName,
+            baseUnitName,
+            displayUnitName,
+            multiplier,
+            matchedVendorId,
+            matchedProductTypeId,
+            productCode,
+            spanishName,
+            note,
+            isActive,
+            parLevel,
+          }, dto.locationId);
+
+          action = changedFields.length > 0 ? 'UPDATE' : 'UNCHANGED';
+          (rawRow as any)._changedFields = changedFields;
+        }
+      } else {
+        action = 'CREATE';
+        if (displayName) {
+          const sameNameItems = itemsByNameMap.get(displayName.trim().toLowerCase()) || [];
+          if (sameNameItems.length > 0) {
+            isDuplicate = true;
+            duplicateWarning = `⚠️ Product name "${displayName}" exists in catalog. Include Product ID to update existing product, or proceed to add as new.`;
+          }
+        }
+        if (productCode && !isDuplicate) {
+          const sameCodeItems = itemsByCodeMap.get(productCode.trim().toLowerCase()) || [];
+          if (sameCodeItems.length > 0) {
+            isDuplicate = true;
+            duplicateWarning = `⚠️ Product code "${productCode}" exists in catalog. Include Product ID to update existing product, or proceed to add as new.`;
+          }
         }
       }
 
-      // Check if product code already exists (case-insensitive)
-      if (productCode && !isDuplicate) {
-        const existingByCode = itemByCode.get(productCode.toLowerCase());
-        if (existingByCode) {
-          errors.push(`Warning: A product with code/SKU "${productCode}" already exists in the catalog.`);
-          isDuplicate = true;
-        }
-      }
-
-      let action: 'CREATE' | 'UPDATE' | 'INVALID' = 'CREATE';
       if (errors.length > 0) {
         action = 'INVALID';
       }
@@ -520,8 +610,10 @@ export class ItemsService {
         action,
         isDuplicate,
         errors,
+        warnings: duplicateWarning ? [duplicateWarning] : [],
+        changedFields: (rawRow as any)._changedFields || [],
         data: {
-          id: rawRow.id,
+          id: rowId,
           displayName,
           baseUnitName,
           displayUnitName,
@@ -539,33 +631,121 @@ export class ItemsService {
       });
     }
 
-    const validCount = rowResults.filter((r) => r.action === 'CREATE').length;
+    const validCount = rowResults.filter((r) => r.action === 'CREATE' || r.action === 'UPDATE' || r.action === 'UNCHANGED').length;
+    const createCount = rowResults.filter((r) => r.action === 'CREATE').length;
+    const updateCount = rowResults.filter((r) => r.action === 'UPDATE').length;
+    const unchangedCount = rowResults.filter((r) => r.action === 'UNCHANGED').length;
     const invalidCount = rowResults.filter((r) => r.action === 'INVALID').length;
     const duplicateCount = rowResults.filter((r) => r.isDuplicate).length;
-    const createCount = validCount;
 
     return {
       total: rowResults.length,
       validCount,
       invalidCount,
       createCount,
-      updateCount: 0,
+      updateCount,
+      unchangedCount,
       duplicateCount,
       rows: rowResults,
     };
   }
 
+  private getItemModifications(existingItem: any, incoming: any, locationId?: string): string[] {
+    const cleanStr = (val: any) => (val === undefined || val === null ? '' : String(val).trim());
+    const changes: string[] = [];
+
+    if (cleanStr(incoming.displayName) !== cleanStr(existingItem.displayName)) {
+      changes.push(`Name: "${existingItem.displayName}" ➔ "${incoming.displayName}"`);
+    }
+
+    if (cleanStr(incoming.baseUnitName) !== cleanStr(existingItem.baseUnitName)) {
+      changes.push(`Base Unit: "${existingItem.baseUnitName || '—'}" ➔ "${incoming.baseUnitName}"`);
+    }
+
+    if (incoming.displayUnitName !== undefined) {
+      const targetDisplayUnit = cleanStr(incoming.displayUnitName) || cleanStr(incoming.baseUnitName);
+      const existingDisplayUnit = cleanStr(existingItem.displayUnitName) || cleanStr(existingItem.baseUnitName);
+      if (targetDisplayUnit !== existingDisplayUnit) {
+        changes.push(`Display Unit: "${existingDisplayUnit || '—'}" ➔ "${targetDisplayUnit}"`);
+      }
+    }
+
+    if (incoming.multiplier !== undefined && !Number.isNaN(Number(incoming.multiplier))) {
+      const existingMult = existingItem.multiplier !== undefined && existingItem.multiplier !== null && Number(existingItem.multiplier) > 0
+        ? Number(existingItem.multiplier)
+        : 1;
+      const targetMult = Number(incoming.multiplier) > 0 ? Number(incoming.multiplier) : 1;
+      if (targetMult !== existingMult) {
+        changes.push(`Multiplier: ${existingMult}x ➔ ${targetMult}x`);
+      }
+    }
+
+    if (incoming.matchedVendorId && incoming.matchedVendorId !== existingItem.vendorId) {
+      changes.push(`Vendor`);
+    }
+
+    if (incoming.matchedProductTypeId !== undefined) {
+      const existingType = existingItem.productTypeId || null;
+      const targetType = incoming.matchedProductTypeId || null;
+      if (existingType !== targetType) {
+        changes.push(`Category`);
+      }
+    }
+
+    if (incoming.productCode !== undefined && cleanStr(incoming.productCode) !== cleanStr(existingItem.productCode)) {
+      changes.push(`Code/SKU: "${existingItem.productCode || '—'}" ➔ "${incoming.productCode || '—'}"`);
+    }
+
+    if (incoming.spanishName !== undefined && cleanStr(incoming.spanishName) !== cleanStr(existingItem.spanishName)) {
+      changes.push(`Spanish Name`);
+    }
+
+    if (incoming.note !== undefined && cleanStr(incoming.note) !== cleanStr(existingItem.note)) {
+      changes.push(`Note`);
+    }
+
+    if (incoming.isActive !== undefined && incoming.isActive !== existingItem.isActive) {
+      changes.push(`Status: ${existingItem.isActive ? 'Active' : 'Inactive'} ➔ ${incoming.isActive ? 'Active' : 'Inactive'}`);
+    }
+
+    if (locationId) {
+      const locItem = existingItem.locationItems?.find((li: any) => li.locationId === locationId);
+      if (!locItem) {
+        changes.push(`Enable for Location`);
+      } else {
+        const existingPar = (locItem.parLevel !== undefined && locItem.parLevel !== null && !Number.isNaN(Number(locItem.parLevel)))
+          ? Number(locItem.parLevel)
+          : 0;
+        if (incoming.parLevel !== undefined && !Number.isNaN(Number(incoming.parLevel)) && Number(incoming.parLevel) !== existingPar) {
+          changes.push(`PAR Level: ${existingPar} ➔ ${incoming.parLevel}`);
+        }
+        if (incoming.isActive !== undefined && incoming.isActive !== locItem.isActive) {
+          changes.push(`Location Status: ${locItem.isActive ? 'Active' : 'Inactive'} ➔ ${incoming.isActive ? 'Active' : 'Inactive'}`);
+        }
+      }
+    }
+
+    return changes;
+  }
+
   async processBulkUpload(dto: BulkUploadDto) {
     const validation = await this.validateBulkItems(dto);
-    const validRows = validation.rows.filter((r) => r.action === 'CREATE');
+    const validRows = validation.rows.filter(
+      (r) => r.action === 'CREATE' || r.action === 'UPDATE' || r.action === 'UNCHANGED'
+    );
+    const rowsToExecute = validation.rows.filter(
+      (r) => r.action === 'CREATE' || r.action === 'UPDATE'
+    );
 
     if (validRows.length === 0) {
-      throw new BadRequestException('No new valid products found to add. Duplicate or invalid items were skipped.');
+      throw new BadRequestException('No valid products found to process. Invalid items were skipped.');
     }
 
     let createdCount = 0;
+    let updatedCount = 0;
+    let unchangedCount = validation.unchangedCount;
 
-    for (const row of validRows) {
+    for (const row of rowsToExecute) {
       const itemData = row.data;
 
       let productTypeId = itemData.productTypeId;
@@ -588,42 +768,80 @@ export class ItemsService {
         : baseUnitName;
       const multiplier = itemData.multiplier ?? 1;
 
-      const newItem = await this.prisma.item.create({
-        data: {
-          displayName: itemData.displayName,
-          baseUnitName,
-          displayUnitName,
-          multiplier,
-          vendorId: itemData.vendorId,
-          productTypeId: productTypeId || null,
-          productCode: itemData.productCode || null,
-          spanishName: itemData.spanishName || null,
-          note: itemData.note || null,
-          isActive: itemData.isActive ?? true,
-        },
-      });
-
-      let locationsToAssign: string[] = [];
-      if (dto.locationId) {
-        locationsToAssign = [dto.locationId];
-      } else {
-        const allLocations = await this.prisma.location.findMany({ select: { id: true } });
-        locationsToAssign = allLocations.map((l) => l.id);
-      }
-
-      if (locationsToAssign.length > 0) {
-        await this.prisma.locationItem.createMany({
-          data: locationsToAssign.map((locId) => ({
-            locationId: locId,
-            itemId: newItem.id,
-            parLevel: itemData.parLevel ?? 0,
-            isActive: true,
-          })),
-          skipDuplicates: true,
+      if (row.action === 'UPDATE' && itemData.id) {
+        await this.prisma.item.update({
+          where: { id: itemData.id },
+          data: {
+            displayName: itemData.displayName,
+            baseUnitName,
+            displayUnitName,
+            multiplier,
+            ...(itemData.vendorId ? { vendorId: itemData.vendorId } : {}),
+            ...(productTypeId !== undefined ? { productTypeId: productTypeId || null } : {}),
+            productCode: itemData.productCode || null,
+            spanishName: itemData.spanishName || null,
+            note: itemData.note || null,
+            isActive: itemData.isActive ?? true,
+          },
         });
-      }
 
-      createdCount++;
+        if (dto.locationId) {
+          await this.prisma.locationItem.upsert({
+            where: {
+              locationId_itemId: { locationId: dto.locationId, itemId: itemData.id },
+            },
+            create: {
+              locationId: dto.locationId,
+              itemId: itemData.id,
+              parLevel: itemData.parLevel ?? 0,
+              isActive: itemData.isActive ?? true,
+            },
+            update: {
+              ...(itemData.parLevel !== undefined ? { parLevel: itemData.parLevel } : {}),
+              isActive: itemData.isActive ?? true,
+            },
+          });
+        }
+
+        updatedCount++;
+      } else {
+        const newItem = await this.prisma.item.create({
+          data: {
+            displayName: itemData.displayName,
+            baseUnitName,
+            displayUnitName,
+            multiplier,
+            vendorId: itemData.vendorId!,
+            productTypeId: productTypeId || null,
+            productCode: itemData.productCode || null,
+            spanishName: itemData.spanishName || null,
+            note: itemData.note || null,
+            isActive: itemData.isActive ?? true,
+          },
+        });
+
+        let locationsToAssign: string[] = [];
+        if (dto.locationId) {
+          locationsToAssign = [dto.locationId];
+        } else {
+          const allLocations = await this.prisma.location.findMany({ select: { id: true } });
+          locationsToAssign = allLocations.map((l) => l.id);
+        }
+
+        if (locationsToAssign.length > 0) {
+          await this.prisma.locationItem.createMany({
+            data: locationsToAssign.map((locId) => ({
+              locationId: locId,
+              itemId: newItem.id,
+              parLevel: itemData.parLevel ?? 0,
+              isActive: true,
+            })),
+            skipDuplicates: true,
+          });
+        }
+
+        createdCount++;
+      }
     }
 
     return {
@@ -631,7 +849,8 @@ export class ItemsService {
       totalCount: dto.items.length,
       processedCount: validRows.length,
       createdCount,
-      updatedCount: 0,
+      updatedCount,
+      unchangedCount,
       invalidCount: validation.invalidCount,
     };
   }
