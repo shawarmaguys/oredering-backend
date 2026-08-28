@@ -290,7 +290,7 @@ export class LocationsService {
     });
   }
 
-  async duplicate(sourceId: string, newName: string, copySlackTokens: boolean = false) {
+  async duplicate(sourceId: string, newName: string) {
     const source = await this.prisma.location.findUnique({
       where: { id: sourceId },
     });
@@ -321,8 +321,8 @@ export class LocationsService {
               phone: source.phone,
               email: source.email,
               color: source.color,
-              slackBotToken: copySlackTokens ? source.slackBotToken : null,
-              slackUserToken: copySlackTokens ? source.slackUserToken : null,
+              slackBotToken: null,
+              slackUserToken: null,
             },
           }),
         ]);

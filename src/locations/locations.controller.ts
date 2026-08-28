@@ -38,9 +38,9 @@ export class LocationsController {
   @HttpCode(HttpStatus.CREATED)
   async duplicate(
     @Param('id') id: string,
-    @Body() dto: { name: string; copySlackTokens?: boolean },
+    @Body() dto: { name: string },
   ) {
-    return this.locationsService.duplicate(id, dto.name, dto.copySlackTokens);
+    return this.locationsService.duplicate(id, dto.name);
   }
 
   @Delete(':id')
