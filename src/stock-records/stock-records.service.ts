@@ -393,7 +393,7 @@ export class StockRecordsService {
 
               if (createdPoId) {
                 const frontendUrl =
-                  process.env.FRONTEND_URL || 'http://localhost:3000';
+                  process.env.FRONTEND_URL;
                 message +=
                   `🛍️ *Auto-Drafted Purchase Order Created*\n` +
                   `• *Status:* DRAFT\n` +

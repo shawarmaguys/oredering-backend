@@ -195,7 +195,7 @@ export class SchedulesService implements OnModuleInit {
 
       if (botToken && slackChannel) {
         try {
-          const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+          const frontendUrl = process.env.FRONTEND_URL;
           const formUrl = `${frontendUrl}/dashboard?recordId=${stockRecord.id}`;
           const text = `🔔 *New Stock Count* 🔔\n` +
             `A new stock count has been initiated for *${schedule.location.name}* (Vendor: *${schedule.vendor.displayName}*).\n` +
