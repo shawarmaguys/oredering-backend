@@ -87,16 +87,6 @@ export class PurchaseOrdersController {
     return this.purchaseOrdersService.update(id, updatePurchaseOrderDto);
   }
 
-  @Post(':id/approve')
-  @Roles(UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
-  @HttpCode(HttpStatus.OK)
-  async approve(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: any,
-  ) {
-    return this.purchaseOrdersService.approve(id, user.id);
-  }
-
   @Post(':id/send')
   @Roles(UserRole.MANAGER, UserRole.SUPER_MANAGER, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)

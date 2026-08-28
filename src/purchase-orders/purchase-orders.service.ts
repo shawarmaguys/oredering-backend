@@ -130,70 +130,10 @@ export class PurchaseOrdersService {
     return po;
   }
 
-  async approve(id: string, userId: string) {
-    const po = await this.prisma.purchaseOrder.findUnique({ where: { id } });
-    if (!po) throw new NotFoundException(`Purchase order with ID ${id} not found`);
-    if (po.status !== PurchaseOrderStatus.DRAFT) throw new BadRequestException(`Purchase order is already ${po.status}`);
-
-    const updatedPo = await this.prisma.purchaseOrder.update({
-      where: { id },
-      data: { status: PurchaseOrderStatus.GENERATED, approvedBy: userId, approvedAt: new Date() },
-      include: {
-        items: { include: { item: true } },
-        vendor: { include: { department: true } },
-        location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
-        stockRecord: true,
-        approver: { select: { id: true, fullName: true, email: true, role: true } },
-      },
-    });
-
-    // Post Slack Thread Reply if there's an associated stock record
-    try {
-      const loc = await this.prisma.location.findUnique({ where: { id: updatedPo.locationId } });
-      const botToken = decryptToken(loc?.slackBotToken);
-      const stockRecord = updatedPo.stockRecord;
-      const user = await this.prisma.user.findUnique({ where: { id: userId } });
-
-      if (botToken && stockRecord) {
-        const deptChannel = updatedPo.vendor?.department?.slackChannel;
-        if (stockRecord.responseSlackMessageTs && deptChannel) {
-          try {
-            const resolvedChannelId = await resolveChannelId(botToken, deptChannel);
-            const pdfBuffer = await generatePurchaseOrderPdf(updatedPo);
-            const safeLocationName = updatedPo.location.name.replace(/[^a-zA-Z0-9]/g, '_');
-            const fileName = `PurchaseOrder_${safeLocationName}_${new Date().toISOString().split('T')[0]}.pdf`;
-            const msg =
-              `🛍️ *Purchase Order #${updatedPo.id.slice(0, 8)} Approved*\n` +
-              `• *Status:* APPROVED\n` +
-              `• *Approved By:* ${user?.fullName || 'System'}\n` +
-              `• *Date:* ${new Date().toLocaleString()}\n\n` +
-              `This purchase order has been approved. PDF attached.`;
-            await uploadPdfToSlackThread(botToken, resolvedChannelId, stockRecord.responseSlackMessageTs, pdfBuffer, fileName, msg);
-            this.logger.log(
-              `[PurchaseOrder:${id}] Uploaded approval PDF to department thread ${stockRecord.responseSlackMessageTs} on channel ${resolvedChannelId}`,
-            );
-          } catch (err: any) {
-            this.logger.error(
-              `[PurchaseOrder:${id}] Failed to send approval reply to department message: ${err?.message || err}`,
-              err?.stack,
-            );
-          }
-        }
-      }
-    } catch (err: any) {
-      this.logger.error(
-        `[PurchaseOrder:${id}] Failed to process approval reply task: ${err?.message || err}`,
-        err?.stack,
-      );
-    }
-
-    return updatedPo;
-  }
-
   async update(id: string, updatePurchaseOrderDto: UpdatePurchaseOrderDto) {
     const po = await this.prisma.purchaseOrder.findUnique({ where: { id } });
     if (!po) throw new NotFoundException(`Purchase order with ID ${id} not found`);
-    if (po.status !== PurchaseOrderStatus.DRAFT) throw new BadRequestException('Can only update DRAFT purchase orders');
+    if (po.status === PurchaseOrderStatus.CANCELLED) throw new BadRequestException('Cannot update CANCELLED purchase order');
 
     return this.prisma.$transaction(
       async (tx) => {
