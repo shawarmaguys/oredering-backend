@@ -93,13 +93,40 @@ export class SchedulesService implements OnModuleInit {
 
   async findAll() {
     return this.prisma.schedule.findMany({
-      where: { isActive: true },
       include: {
         location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
         vendor: true,
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async deactivateByLocation(locationId: string) {
+    const location = await this.prisma.location.findUnique({ where: { id: locationId } });
+    if (!location) {
+      throw new NotFoundException(`Location with ID ${locationId} not found`);
+    }
+
+    await this.prisma.schedule.updateMany({
+      where: { locationId },
+      data: { isActive: false },
+    });
+
+    return { success: true, message: `All triggers deactivated for location ${location.name}` };
+  }
+
+  async activateByLocation(locationId: string) {
+    const location = await this.prisma.location.findUnique({ where: { id: locationId } });
+    if (!location) {
+      throw new NotFoundException(`Location with ID ${locationId} not found`);
+    }
+
+    await this.prisma.schedule.updateMany({
+      where: { locationId },
+      data: { isActive: true },
+    });
+
+    return { success: true, message: `All triggers activated for location ${location.name}` };
   }
 
   async update(id: string, updateScheduleDto: any) {

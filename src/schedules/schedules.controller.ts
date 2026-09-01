@@ -25,6 +25,20 @@ export class SchedulesController {
     return this.schedulesService.findAll();
   }
 
+  @Put('location/:locationId/deactivate')
+  @Roles(UserRole.SUPER_MANAGER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async deactivateByLocation(@Param('locationId') locationId: string) {
+    return this.schedulesService.deactivateByLocation(locationId);
+  }
+
+  @Put('location/:locationId/activate')
+  @Roles(UserRole.SUPER_MANAGER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async activateByLocation(@Param('locationId') locationId: string) {
+    return this.schedulesService.activateByLocation(locationId);
+  }
+
   @Put(':id')
   @Roles(UserRole.SUPER_MANAGER, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
