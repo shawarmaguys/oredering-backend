@@ -39,6 +39,26 @@ export class SchedulesController {
     return this.schedulesService.activateByLocation(locationId);
   }
 
+  @Put('vendor/:vendorId/deactivate')
+  @Roles(UserRole.SUPER_MANAGER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async deactivateByVendor(
+    @Param('vendorId') vendorId: string,
+    @Body('locationId') locationId?: string,
+  ) {
+    return this.schedulesService.deactivateByVendor(vendorId, locationId);
+  }
+
+  @Put('vendor/:vendorId/activate')
+  @Roles(UserRole.SUPER_MANAGER, UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async activateByVendor(
+    @Param('vendorId') vendorId: string,
+    @Body('locationId') locationId?: string,
+  ) {
+    return this.schedulesService.activateByVendor(vendorId, locationId);
+  }
+
   @Put(':id')
   @Roles(UserRole.SUPER_MANAGER, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)

@@ -129,6 +129,44 @@ export class SchedulesService implements OnModuleInit {
     return { success: true, message: `All triggers activated for location ${location.name}` };
   }
 
+  async deactivateByVendor(vendorId: string, locationId?: string) {
+    const vendor = await this.prisma.vendor.findUnique({ where: { id: vendorId } });
+    if (!vendor) {
+      throw new NotFoundException(`Vendor with ID ${vendorId} not found`);
+    }
+
+    const where: any = { vendorId };
+    if (locationId && locationId !== 'all') {
+      where.locationId = locationId;
+    }
+
+    await this.prisma.schedule.updateMany({
+      where,
+      data: { isActive: false },
+    });
+
+    return { success: true, message: `All triggers deactivated for vendor ${vendor.displayName}` };
+  }
+
+  async activateByVendor(vendorId: string, locationId?: string) {
+    const vendor = await this.prisma.vendor.findUnique({ where: { id: vendorId } });
+    if (!vendor) {
+      throw new NotFoundException(`Vendor with ID ${vendorId} not found`);
+    }
+
+    const where: any = { vendorId };
+    if (locationId && locationId !== 'all') {
+      where.locationId = locationId;
+    }
+
+    await this.prisma.schedule.updateMany({
+      where,
+      data: { isActive: true },
+    });
+
+    return { success: true, message: `All triggers activated for vendor ${vendor.displayName}` };
+  }
+
   async update(id: string, updateScheduleDto: any) {
     const schedule = await this.prisma.schedule.findUnique({ where: { id } });
     if (!schedule) {
