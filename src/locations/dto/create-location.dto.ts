@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateLocationDto {
   @IsString()
@@ -16,6 +16,10 @@ export class CreateLocationDto {
   @IsEmail()
   @IsNotEmpty()
   email: string;
+
+  @IsBoolean()
+  @IsOptional()
+  bohEnabled?: boolean;
 
   @IsString()
   @IsOptional()

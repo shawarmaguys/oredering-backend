@@ -85,7 +85,7 @@ export class StockRecordsService {
               item: true,
             },
           },
-          location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
+          location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true, bohEnabled: true } },
         },
       });
     });
@@ -107,7 +107,22 @@ export class StockRecordsService {
       this.prisma.stockRecord.findMany({
         where,
         include: {
-          location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
+          location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true, bohEnabled: true } },
+          purchaseOrders: {
+            include: {
+              vendor: true,
+            },
+          },
+          items: {
+            take: 1,
+            include: {
+              item: {
+                include: {
+                  vendor: true,
+                },
+              },
+            },
+          },
         },
         orderBy: { submittedAt: 'desc' },
         skip,
@@ -116,8 +131,16 @@ export class StockRecordsService {
       this.prisma.stockRecord.count({ where }),
     ]);
 
+    const mappedData = data.map((sr) => {
+      const vendor = sr.purchaseOrders?.[0]?.vendor || sr.items?.[0]?.item?.vendor || null;
+      return {
+        ...sr,
+        vendor,
+      };
+    });
+
     return {
-      data,
+      data: mappedData,
       total,
       page,
       limit,
@@ -131,10 +154,20 @@ export class StockRecordsService {
       include: {
         items: {
           include: {
-            item: true,
+            item: {
+              include: {
+                vendor: true,
+                productType: true,
+              },
+            },
           },
         },
-        location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
+        purchaseOrders: {
+          include: {
+            vendor: true,
+          },
+        },
+        location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true, bohEnabled: true } },
       },
     });
 
@@ -142,7 +175,18 @@ export class StockRecordsService {
       throw new NotFoundException(`Stock record with ID ${id} not found`);
     }
 
-    return record;
+    let vendor = record.purchaseOrders?.[0]?.vendor || null;
+    if (!vendor) {
+      const itemWithVendor = record.items.find((i) => i.item?.vendor);
+      if (itemWithVendor?.item?.vendor) {
+        vendor = itemWithVendor.item.vendor;
+      }
+    }
+
+    return {
+      ...record,
+      vendor,
+    };
   }
 
   async complete(id: string, completeDto: CompleteStockRecordDto) {
@@ -209,7 +253,7 @@ export class StockRecordsService {
               item: true,
             },
           },
-          location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
+          location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true, bohEnabled: true } },
         },
       });
     });

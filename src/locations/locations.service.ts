@@ -8,7 +8,7 @@ export class LocationsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createLocationDto: CreateLocationDto) {
-    const { name, address, phone, email, color, slackBotToken, slackUserToken } = createLocationDto;
+    const { name, address, phone, email, color, bohEnabled, slackBotToken, slackUserToken } = createLocationDto;
 
     const existing = await this.prisma.location.findUnique({
       where: { name },
@@ -24,6 +24,7 @@ export class LocationsService {
         phone, 
         email, 
         color: color || null,
+        bohEnabled: bohEnabled !== undefined ? bohEnabled : true,
         slackBotToken: encryptToken(slackBotToken), 
         slackUserToken: encryptToken(slackUserToken) 
       },
@@ -43,7 +44,7 @@ export class LocationsService {
   }
 
   async update(id: string, updateLocationDto: any) {
-    const { name, address, phone, email, color, slackBotToken, slackUserToken } = updateLocationDto;
+    const { name, address, phone, email, color, bohEnabled, slackBotToken, slackUserToken } = updateLocationDto;
 
     if (name) {
       const existing = await this.prisma.location.findUnique({
@@ -60,6 +61,7 @@ export class LocationsService {
     if (phone !== undefined) data.phone = phone;
     if (email !== undefined) data.email = email;
     if (color !== undefined) data.color = color;
+    if (bohEnabled !== undefined) data.bohEnabled = bohEnabled;
 
     if (slackBotToken !== undefined && slackBotToken !== '••••••••') {
       data.slackBotToken = encryptToken(slackBotToken);
