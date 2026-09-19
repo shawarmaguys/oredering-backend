@@ -65,12 +65,14 @@ export class SchedulesService implements OnModuleInit {
 
   async create(createScheduleDto: CreateScheduleDto) {
     const { locationId, vendorId, ...scheduleData } = createScheduleDto;
+    this.logger.log(`[SchedulesService] Creating schedule for vendor ${vendorId} at location ${locationId} (${scheduleData.scheduleType} at ${scheduleData.triggerTime})`);
 
     // Verify location
     const location = await this.prisma.location.findUnique({
       where: { id: locationId },
     });
     if (!location) {
+      this.logger.warn(`[SchedulesService] Location with ID ${locationId} not found`);
       throw new NotFoundException(`Location with ID ${locationId} not found`);
     }
 
@@ -79,16 +81,19 @@ export class SchedulesService implements OnModuleInit {
       where: { id: vendorId },
     });
     if (!vendor) {
+      this.logger.warn(`[SchedulesService] Vendor with ID ${vendorId} not found`);
       throw new NotFoundException(`Vendor with ID ${vendorId} not found`);
     }
 
-    return this.prisma.schedule.create({
+    const created = await this.prisma.schedule.create({
       data: {
         ...scheduleData,
         locationId,
         vendorId,
       },
     });
+    this.logger.log(`[SchedulesService] Created schedule "${created.id}"`);
+    return created;
   }
 
   async findAll() {

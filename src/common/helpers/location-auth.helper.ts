@@ -1,5 +1,7 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, Logger } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+
+const logger = new Logger('LocationAuth');
 
 export interface AuthUser {
   id: string;
@@ -25,8 +27,10 @@ export function validateLocationAccess(
   // ADMIN and SUPER_MANAGER have global access
   if (user.role === UserRole.ADMIN || user.role === UserRole.SUPER_MANAGER) {
     if (requestedLocationId && requestedLocationId !== 'all') {
+      logger.debug(`[LocationAuth] User ${user.id} (${user.role}) granted direct access to location ${requestedLocationId}`);
       return [requestedLocationId];
     }
+    logger.debug(`[LocationAuth] User ${user.id} (${user.role}) granted global unrestricted location access`);
     return undefined; // All locations allowed
   }
 
@@ -35,11 +39,18 @@ export function validateLocationAccess(
 
   if (requestedLocationId && requestedLocationId !== 'all') {
     if (!assignedLocationIds.includes(requestedLocationId)) {
+      logger.warn(
+        `[LocationAuth] DENIED: User ${user.id} (${user.role}) attempted unauthorized access to location "${requestedLocationId}". Assigned: [${assignedLocationIds.join(', ')}]`,
+      );
       throw new ForbiddenException(`Access denied for location "${requestedLocationId}"`);
     }
+    logger.debug(`[LocationAuth] User ${user.id} (${user.role}) granted access to assigned location ${requestedLocationId}`);
     return [requestedLocationId];
   }
 
   // If requesting 'all' or unspecified, filter to user's assigned locations
+  logger.debug(
+    `[LocationAuth] User ${user.id} (${user.role}) filtered to ${assignedLocationIds.length} assigned locations`,
+  );
   return assignedLocationIds;
 }

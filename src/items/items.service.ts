@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateItemDto } from './dto/create-item.dto';
 import { BulkUploadDto } from './dto/bulk-item.dto';
@@ -13,10 +13,13 @@ function isValidUUID(id?: string): boolean {
 
 @Injectable()
 export class ItemsService {
+  private readonly logger = new Logger(ItemsService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createItemDto: CreateItemDto) {
     const { vendorId, locationId, parLevel, ...itemData } = createItemDto;
+    this.logger.log(`[ItemsService] Creating item "${itemData.displayName}" for vendor "${vendorId}"`);
 
     // Check if vendor exists
     const vendor = await this.prisma.vendor.findUnique({
@@ -65,7 +68,7 @@ export class ItemsService {
       });
     }
 
-    return this.prisma.item.findUnique({
+    const created = await this.prisma.item.findUnique({
       where: { id: item.id },
       include: {
         vendor: true,
@@ -73,6 +76,8 @@ export class ItemsService {
         locationItems: true,
       },
     });
+    this.logger.log(`[ItemsService] Created item "${item.id}" (${item.displayName}), assigned to ${locationsToAssign.length} locations`);
+    return created;
   }
 
   async findAll(options: {
@@ -290,6 +295,7 @@ export class ItemsService {
   }
 
   async assignToLocation(itemId: string, locationId: string, parLevel?: number) {
+    this.logger.log(`[ItemsService] Assigning item ${itemId} to location ${locationId} (parLevel: ${parLevel ?? 0})`);
     const item = await this.prisma.item.findUnique({ where: { id: itemId } });
     if (!item) throw new NotFoundException(`Item with ID ${itemId} not found`);
 
@@ -301,20 +307,25 @@ export class ItemsService {
       updateData.parLevel = parLevel;
     }
 
-    return this.prisma.locationItem.upsert({
+    const result = await this.prisma.locationItem.upsert({
       where: {
         locationId_itemId: { locationId, itemId },
       },
       create: { locationId, itemId, parLevel: parLevel ?? 0, isActive: true },
       update: updateData,
     });
+    this.logger.log(`[ItemsService] Item ${itemId} successfully assigned to location ${locationId}`);
+    return result;
   }
 
   async removeFromLocation(itemId: string, locationId: string) {
-    return this.prisma.locationItem.updateMany({
+    this.logger.log(`[ItemsService] Removing item ${itemId} from location ${locationId}`);
+    const result = await this.prisma.locationItem.updateMany({
       where: { itemId, locationId },
       data: { isActive: false },
     });
+    this.logger.log(`[ItemsService] Removed item ${itemId} from location ${locationId}`);
+    return result;
   }
 
   async addBackupVendor(itemId: string, vendorId: string) {

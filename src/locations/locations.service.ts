@@ -1,23 +1,27 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { encryptToken, decryptToken } from '../common/utils/crypto.util';
 
 @Injectable()
 export class LocationsService {
+  private readonly logger = new Logger(LocationsService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createLocationDto: CreateLocationDto) {
     const { name, address, phone, email, color, bohEnabled, slackBotToken, slackUserToken } = createLocationDto;
+    this.logger.log(`[LocationsService] Creating location "${name}"`);
 
     const existing = await this.prisma.location.findUnique({
       where: { name },
     });
     if (existing) {
+      this.logger.warn(`[LocationsService] Conflict: Location "${name}" already exists`);
       throw new ConflictException(`Location with name "${name}" already exists`);
     }
 
-    return this.prisma.location.create({
+    const created = await this.prisma.location.create({
       data: { 
         name, 
         address, 
@@ -29,13 +33,15 @@ export class LocationsService {
         slackUserToken: encryptToken(slackUserToken) 
       },
     });
+    this.logger.log(`[LocationsService] Created location "${created.id}" (${created.name})`);
+    return created;
   }
 
   async findAll() {
     const locations = await this.prisma.location.findMany({
       orderBy: { name: 'asc' },
     });
-    
+    this.logger.debug(`[LocationsService] findAll returned ${locations.length} locations`);
     return locations.map(loc => ({
       ...loc,
       slackBotToken: loc.slackBotToken ? '••••••••' : '',
@@ -44,6 +50,7 @@ export class LocationsService {
   }
 
   async update(id: string, updateLocationDto: any) {
+    this.logger.log(`[LocationsService] Updating location ${id}`);
     const { name, address, phone, email, color, bohEnabled, slackBotToken, slackUserToken } = updateLocationDto;
 
     if (name) {
@@ -51,6 +58,7 @@ export class LocationsService {
         where: { name },
       });
       if (existing && existing.id !== id) {
+        this.logger.warn(`[LocationsService] Conflict updating location ${id}: Name "${name}" already in use`);
         throw new ConflictException(`Location with name "${name}" already exists`);
       }
     }
@@ -70,13 +78,16 @@ export class LocationsService {
       data.slackUserToken = encryptToken(slackUserToken);
     }
 
-    return this.prisma.location.update({
+    const updated = await this.prisma.location.update({
       where: { id },
       data,
     });
+    this.logger.log(`[LocationsService] Updated location ${id} (${updated.name})`);
+    return updated;
   }
 
   async getLocationItems(locationId: string) {
+    this.logger.debug(`[LocationsService] Fetching location items for location: ${locationId}`);
     // Verify location
     const location = await this.prisma.location.findUnique({
       where: { id: locationId },

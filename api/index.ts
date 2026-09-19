@@ -11,6 +11,7 @@ async function bootstrapServer() {
   const app = await NestFactory.create(
     AppModule,
     new ExpressAdapter(expressApp),
+    { bufferLogs: true },
   );
 
   configureApp(app);

@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { CacheModule } from '@nestjs/cache-manager';
+import { LoggerModule } from 'nestjs-pino';
+import { getLoggerConfig } from './common/logger/logger.config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -17,6 +19,7 @@ import { TranslationsModule } from './translations/translations.module';
 
 @Module({
   imports: [
+    LoggerModule.forRoot(getLoggerConfig()),
     ConfigModule.forRoot({
       isGlobal: true,
     }),

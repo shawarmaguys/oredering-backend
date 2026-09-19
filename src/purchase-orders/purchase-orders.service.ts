@@ -16,6 +16,7 @@ export class PurchaseOrdersService {
 
   async create(createPurchaseOrderDto: CreatePurchaseOrderDto, userId: string) {
     const { vendorId, locationId, stockRecordId, notes, items } = createPurchaseOrderDto;
+    this.logger.log(`[PurchaseOrdersService] Creating PO for vendor ${vendorId} at location ${locationId} (${items?.length || 0} items, user: ${userId})`);
 
     // Verify vendor
     const vendor = await this.prisma.vendor.findUnique({ where: { id: vendorId } });
@@ -41,6 +42,7 @@ export class PurchaseOrdersService {
       const po = await tx.purchaseOrder.create({
         data: { vendorId, locationId, stockRecordId, notes: notes ?? '', createdBy: creatorName, status: PurchaseOrderStatus.DRAFT },
       });
+      this.logger.log(`[PurchaseOrdersService] Created PO draft "${po.id}" for vendor "${vendor.displayName}"`);
 
       // Batch-fetch all items to avoid N+1 queries inside the transaction
       const itemIds = items.map((i) => i.itemId);

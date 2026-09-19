@@ -130,28 +130,33 @@ export class TranslationsService implements OnModuleInit {
   }
 
   async create(createTranslationDto: CreateTranslationDto) {
+    this.logger.log(`[TranslationsService] Adding translation for "${createTranslationDto.sourceText}" (${createTranslationDto.sourceLanguage} -> ${createTranslationDto.targetLanguage})`);
     return this.prisma.translation.create({
       data: createTranslationDto,
     });
   }
 
   async findAll() {
-    return this.prisma.translation.findMany({
+    const translations = await this.prisma.translation.findMany({
       orderBy: { id: 'asc' },
     });
+    this.logger.debug(`[TranslationsService] findAll returned ${translations.length} translations`);
+    return translations;
   }
 
   async translateText(text: string) {
     if (!text || !text.trim()) {
       return { success: false, original: text || '', translated: '' };
     }
+    this.logger.debug(`[TranslationsService] Translating text: "${text.slice(0, 50)}..."`);
     const serviceUrl = process.env.EMAIL_SERVICE_URL || 'https://script.google.com/macros/s/AKfycbxpaGZFsFf8NZu7J-jRKhL_o55Dkcper4MsJgvUR9pmBOqlax9372k6Rr6qwjdyqafv/exec';
     try {
       const response = await fetch(`${serviceUrl}?text=${encodeURIComponent(text.trim())}`);
       const data = await response.json();
+      this.logger.debug(`[TranslationsService] Translated successfully: "${data?.translated?.slice(0, 50) || ''}..."`);
       return data;
     } catch (error: any) {
-      this.logger.error(`Translation service error: ${error?.message || error}`, error?.stack);
+      this.logger.error(`[TranslationsService] Translation service error: ${error?.message || error}`, error?.stack);
       return { success: false, original: text, translated: '', error: error.message };
     }
   }

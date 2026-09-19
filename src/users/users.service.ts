@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -7,10 +7,13 @@ import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createUserDto: CreateUserDto) {
     const { fullName, email, password, role, locationIds } = createUserDto;
+    this.logger.log(`[UsersService] Creating user "${email}" with role ${role} (locations: ${locationIds?.length || 0})`);
 
     if (role === UserRole.MANAGER && locationIds && locationIds.length > 1) {
       throw new BadRequestException('Managers can only be assigned to a single store location.');
@@ -49,6 +52,7 @@ export class UsersService {
     });
 
     const { passwordHash: _, ...result } = user;
+    this.logger.log(`[UsersService] Created user "${user.id}" (${user.email})`);
     return {
       ...result,
       locationIds: user.userLocations.map((ul) => ul.locationId),
@@ -62,6 +66,7 @@ export class UsersService {
       },
       orderBy: { createdAt: 'desc' },
     });
+    this.logger.debug(`[UsersService] findAll returned ${users.length} users`);
     return users.map(({ passwordHash: _, userLocations, ...user }) => ({
       ...user,
       locationIds: userLocations.map((ul) => ul.locationId),
@@ -76,6 +81,7 @@ export class UsersService {
       },
     });
     if (!user) {
+      this.logger.warn(`[UsersService] findOne user not found: ${id}`);
       throw new NotFoundException(`User with ID ${id} not found`);
     }
     const { passwordHash: _, userLocations, ...result } = user;
@@ -86,10 +92,12 @@ export class UsersService {
   }
 
   async update(id: string, updateUserDto: UpdateUserDto) {
+    this.logger.log(`[UsersService] Updating user ${id}`);
     const user = await this.prisma.user.findUnique({
       where: { id },
     });
     if (!user) {
+      this.logger.warn(`[UsersService] update user not found: ${id}`);
       throw new NotFoundException(`User with ID ${id} not found`);
     }
 
@@ -140,6 +148,7 @@ export class UsersService {
       });
     });
 
+    this.logger.log(`[UsersService] Successfully updated user ${id}`);
     const { passwordHash: _, userLocations, ...result } = updatedUser;
     return {
       ...result,
@@ -148,10 +157,12 @@ export class UsersService {
   }
 
   async deactivate(id: string) {
+    this.logger.log(`[UsersService] Deactivating user ${id}`);
     const user = await this.prisma.user.findUnique({
       where: { id },
     });
     if (!user) {
+      this.logger.warn(`[UsersService] deactivate user not found: ${id}`);
       throw new NotFoundException(`User with ID ${id} not found`);
     }
 
@@ -159,5 +170,6 @@ export class UsersService {
       where: { id },
       data: { isActive: false },
     });
+    this.logger.log(`[UsersService] User ${id} deactivated`);
   }
 }

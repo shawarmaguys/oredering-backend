@@ -1,6 +1,9 @@
 import PDFDocument from 'pdfkit';
 import * as fs from 'fs';
 import * as path from 'path';
+import { Logger } from '@nestjs/common';
+
+const logger = new Logger('PdfUtil');
 
 // ── Shared PDF Infrastructure ──────────────────────────────────────
 
@@ -72,7 +75,10 @@ const getLogoPath = () => {
 // ── Stock Record PDF ───────────────────────────────────────────────
 
 export async function generateStockRecordPdf(record: any): Promise<Buffer> {
-  return createPdfDocument(STOCK_RECORD_THEME, (doc, theme) => {
+  const startTime = performance.now();
+  const itemCount = record.items?.length || 0;
+  logger.log(`[PdfUtil] Starting Stock Record PDF build for record ${record.id} (${itemCount} items)`);
+  const buffer = await createPdfDocument(STOCK_RECORD_THEME, (doc, theme) => {
     const { primaryColor, accentColor, textColor, secondaryTextColor, borderGray, tableHeaderBg } = theme;
 
     // Brand Title
@@ -292,12 +298,18 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
         { align: 'center', width: doc.page.width - 100 }
       );
   });
+  const duration = (performance.now() - startTime).toFixed(1);
+  logger.log(`[PdfUtil] Stock Record PDF built successfully in ${duration}ms (${buffer.length} bytes)`);
+  return buffer;
 }
 
 // ── Purchase Order PDF ─────────────────────────────────────────────
 
 export async function generatePurchaseOrderPdf(po: any): Promise<Buffer> {
-  return createPdfDocument(PURCHASE_ORDER_THEME, (doc, theme) => {
+  const startTime = performance.now();
+  const itemCount = po.items?.length || 0;
+  logger.log(`[PdfUtil] Starting Purchase Order PDF build for PO ${po.id} (${itemCount} items)`);
+  const buffer = await createPdfDocument(PURCHASE_ORDER_THEME, (doc, theme) => {
     const { primaryColor, accentColor, textColor, secondaryTextColor, borderGray, tableHeaderBg } = theme;
 
     // Brand Title & Logo
@@ -575,4 +587,7 @@ export async function generatePurchaseOrderPdf(po: any): Promise<Buffer> {
         { align: 'center', width: doc.page.width - 100 }
       );
   });
+  const duration = (performance.now() - startTime).toFixed(1);
+  logger.log(`[PdfUtil] Purchase Order PDF built successfully in ${duration}ms (${buffer.length} bytes)`);
+  return buffer;
 }

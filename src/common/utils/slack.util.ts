@@ -16,9 +16,11 @@ export async function resolveChannelId(
 
   const cacheKey = `${botToken}:${cleanName.toLowerCase()}`;
   if (channelCache.has(cacheKey)) {
+    logger.debug(`[Slack] Channel ID cache hit for "${cleanName}": ${channelCache.get(cacheKey)}`);
     return channelCache.get(cacheKey)!;
   }
 
+  logger.debug(`[Slack] Fetching conversations.list to resolve channel "${cleanName}"...`);
   try {
     let cursor: string | undefined = undefined;
     do {
@@ -38,7 +40,7 @@ export async function resolveChannelId(
 
       const result: any = await response.json();
       if (!result.ok) {
-        logger.error(`conversations.list failed: ${result.error}`);
+        logger.error(`[Slack] conversations.list failed: ${result.error}`);
         break;
       }
 
@@ -54,16 +56,18 @@ export async function resolveChannelId(
       );
       if (found) {
         channelCache.set(cacheKey, found.id);
+        logger.debug(`[Slack] Resolved channel "${cleanName}" -> ${found.id}`);
         return found.id;
       }
 
       cursor = result.response_metadata?.next_cursor;
     } while (cursor);
   } catch (err: any) {
-    logger.error(`Error in resolveChannelId for "${cleanName}": ${err?.message || err}`, err?.stack);
+    logger.error(`[Slack] Error in resolveChannelId for "${cleanName}": ${err?.message || err}`, err?.stack);
   }
 
   // Fallback to original value
+  logger.warn(`[Slack] Could not resolve channel "${cleanName}" to an ID; falling back to original value.`);
   return channelNameOrId;
 }
 
@@ -75,6 +79,7 @@ export async function uploadPdfToSlackThread(
   fileName: string,
   message?: string,
 ): Promise<any> {
+  logger.log(`[Slack] Uploading PDF "${fileName}" (${pdfBuffer.length} bytes) to channel ${channelId} (thread: ${threadTs || 'none'})`);
   const urlEncodedBody = new URLSearchParams();
   urlEncodedBody.append('filename', fileName);
   urlEncodedBody.append('length', pdfBuffer.length.toString());
@@ -93,6 +98,7 @@ export async function uploadPdfToSlackThread(
 
   const getUrlResult: any = await getUrlResponse.json();
   if (!getUrlResult.ok) {
+    logger.error(`[Slack] files.getUploadURLExternal failed: ${getUrlResult.error}`);
     throw new Error(`getUploadURLExternal failed: ${getUrlResult.error}`);
   }
 
@@ -104,6 +110,7 @@ export async function uploadPdfToSlackThread(
   });
 
   if (!uploadFileResponse.ok) {
+    logger.error(`[Slack] Binary upload to Slack URL failed with status: ${uploadFileResponse.status}`);
     throw new Error(
       `Binary upload failed with status: ${uploadFileResponse.status}`,
     );
@@ -134,8 +141,10 @@ export async function uploadPdfToSlackThread(
 
   const completeResult: any = await completeResponse.json();
   if (!completeResult.ok) {
+    logger.error(`[Slack] files.completeUploadExternal failed: ${completeResult.error}`);
     throw new Error(`completeUploadExternal failed: ${completeResult.error}`);
   }
 
+  logger.log(`[Slack] Successfully uploaded PDF "${fileName}" (fileId: ${file_id}) to channel ${channelId}`);
   return completeResult;
 }

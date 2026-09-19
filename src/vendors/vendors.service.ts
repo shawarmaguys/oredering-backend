@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateVendorDto } from './dto/create-vendor.dto';
 import { UpdateVendorDto } from './dto/update-vendor.dto';
@@ -14,10 +14,13 @@ function isValidUUID(id?: string): boolean {
 
 @Injectable()
 export class VendorsService {
+  private readonly logger = new Logger(VendorsService.name);
+
   constructor(private readonly prisma: PrismaService) { }
 
   async create(createVendorDto: CreateVendorDto) {
     const { departmentId, locationId, locationIds, ...vendorData } = createVendorDto;
+    this.logger.log(`[VendorsService] Creating vendor "${vendorData.displayName}" in department "${departmentId}"`);
 
     // Check if department exists
     let department = await this.prisma.department.findUnique({
@@ -63,13 +66,15 @@ export class VendorsService {
       }
     }
 
-    return this.prisma.vendor.findUnique({
+    const result = await this.prisma.vendor.findUnique({
       where: { id: vendor.id },
       include: {
         department: true,
         locationVendors: { select: { locationId: true } },
       },
     });
+    this.logger.log(`[VendorsService] Created vendor "${vendor.id}" (${vendor.displayName})`);
+    return result;
   }
 
   private async enableVendorProductsForLocation(vendorId: string, locationId: string) {
@@ -248,6 +253,7 @@ export class VendorsService {
   }
 
   async assignToLocation(vendorId: string, locationId: string) {
+    this.logger.log(`[VendorsService] Assigning vendor ${vendorId} to location ${locationId}`);
     const vendor = await this.prisma.vendor.findUnique({ where: { id: vendorId } });
     if (!vendor) throw new NotFoundException(`Vendor with ID "${vendorId}" not found`);
 
@@ -263,11 +269,12 @@ export class VendorsService {
     });
 
     await this.enableVendorProductsForLocation(vendorId, locationId);
-
+    this.logger.log(`[VendorsService] Vendor ${vendorId} assigned to location ${locationId}`);
     return locVendor;
   }
 
   async removeFromLocation(vendorId: string, locationId: string) {
+    this.logger.log(`[VendorsService] Removing vendor ${vendorId} from location ${locationId}`);
     await this.prisma.$transaction([
       this.prisma.locationVendor.deleteMany({
         where: { vendorId, locationId },
@@ -284,6 +291,7 @@ export class VendorsService {
         data: { isActive: false },
       }),
     ]);
+    this.logger.log(`[VendorsService] Vendor ${vendorId} removed from location ${locationId}`);
   }
 
   async getLocationAssignments(vendorId: string) {

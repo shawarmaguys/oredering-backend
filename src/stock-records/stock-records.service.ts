@@ -22,12 +22,14 @@ export class StockRecordsService {
     userId: string | null,
   ) {
     const { locationId, items } = createStockRecordDto;
+    this.logger.log(`[StockRecordsService] Creating stock record at location ${locationId} with ${items?.length || 0} items (user: ${userId || 'guest'})`);
 
     // Check location
     const location = await this.prisma.location.findUnique({
       where: { id: locationId },
     });
     if (!location) {
+      this.logger.warn(`[StockRecordsService] Location not found: ${locationId}`);
       throw new NotFoundException(`Location with ID ${locationId} not found`);
     }
 
@@ -47,6 +49,7 @@ export class StockRecordsService {
           submittedAt: new Date(),
         },
       });
+      this.logger.log(`[StockRecordsService] Created stock record "${stockRecord.id}" at location "${location.name}"`);
 
       // 2. Fetch all items to compute normalized quantities
       const itemIds = items.map((i) => i.itemId);
@@ -196,15 +199,18 @@ export class StockRecordsService {
   }
 
   async complete(id: string, completeDto: CompleteStockRecordDto) {
+    const { items } = completeDto;
+    const submittedByName = completeDto.submitterName?.trim() || 'no-user';
+    this.logger.log(`[StockRecordsService] Completing stock record ${id} with ${items?.length || 0} items (submitter: "${submittedByName}")`);
+
     const record = await this.prisma.stockRecord.findUnique({
       where: { id },
     });
 
     if (!record) {
+      this.logger.warn(`[StockRecordsService] Stock record ${id} not found for completion`);
       throw new NotFoundException(`Stock record with ID ${id} not found`);
     }
-    const { items } = completeDto;
-    const submittedByName = completeDto.submitterName?.trim() || 'no-user';
     if (items.length === 0) {
       throw new BadRequestException(
         'Stock record must contain at least one item',

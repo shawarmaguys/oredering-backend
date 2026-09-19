@@ -1,11 +1,14 @@
 import * as crypto from 'crypto';
+import { Logger } from '@nestjs/common';
 
+const logger = new Logger('CryptoUtil');
 const algorithm = 'aes-256-cbc';
 
 // Generate a 32-byte key from the ENCRYPTION_KEY env var
 const getKey = () => {
   const keyStr = process.env.ENCRYPTION_KEY;
   if (!keyStr) {
+    logger.error('ENCRYPTION_KEY environment variable is missing.');
     throw new Error('ENCRYPTION_KEY environment variable is missing.');
   }
   return crypto.scryptSync(keyStr, 'salt', 32);
@@ -20,6 +23,7 @@ export const encryptToken = (text: string | null | undefined): string | null => 
   const cipher = crypto.createCipheriv(algorithm, getKey(), iv);
   let encrypted = cipher.update(text, 'utf8', 'hex');
   encrypted += cipher.final('hex');
+  logger.debug('[CryptoUtil] Token encrypted successfully');
   return `${iv.toString('hex')}:${encrypted}`;
 };
 
@@ -38,9 +42,10 @@ export const decryptToken = (encryptedText: string | null | undefined): string |
     const decipher = crypto.createDecipheriv(algorithm, getKey(), iv);
     let decrypted = decipher.update(encrypted, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
+    logger.debug('[CryptoUtil] Token decrypted successfully');
     return decrypted;
-  } catch (error) {
-    console.warn('Token decryption failed, returning original value');
+  } catch (error: any) {
+    logger.warn(`[CryptoUtil] Token decryption failed: ${error?.message || error}, returning original value`);
     return encryptedText;
   }
 };

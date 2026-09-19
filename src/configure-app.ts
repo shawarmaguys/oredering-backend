@@ -1,4 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { Logger } from 'nestjs-pino';
+import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import { GlobalHttpExceptionFilter } from './common/filters/http-exception.filter';
 
 function addAllowedOrigins(allowedOrigins: Set<string>, origins?: string) {
   origins
@@ -9,6 +12,9 @@ function addAllowedOrigins(allowedOrigins: Set<string>, origins?: string) {
 }
 
 export function configureApp(app: INestApplication) {
+  app.useLogger(app.get(Logger));
+  app.useGlobalInterceptors(new LoggingInterceptor());
+  app.useGlobalFilters(new GlobalHttpExceptionFilter());
   const allowedOrigins = new Set([
     'http://localhost:3000',
     'http://localhost:3001',
