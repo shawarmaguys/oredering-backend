@@ -175,7 +175,11 @@ export async function generateStockRecordPdf(record: any): Promise<Buffer> {
     doc.font('Helvetica').fontSize(8);
     let isAltRow = false;
 
-    for (const recordItem of record.items || []) {
+    const sortedRecordItems = [...(record.items || [])].sort((a: any, b: any) =>
+      (a.item?.displayName || '').localeCompare(b.item?.displayName || '', undefined, { sensitivity: 'base' })
+    );
+
+    for (const recordItem of sortedRecordItems) {
       const item = recordItem.item || {};
       const displayUnit = item.displayUnitName;
       const baseUnit = item.baseUnitName;
@@ -464,7 +468,11 @@ export async function generatePurchaseOrderPdf(po: any): Promise<Buffer> {
     doc.font('Helvetica').fontSize(9);
     let isAltRow = false;
 
-    const activeItems = (po.items || []).filter((poItem: any) => Number(poItem.quantity || 0) > 0);
+    const activeItems = (po.items || [])
+      .filter((poItem: any) => Number(poItem.quantity || 0) > 0)
+      .sort((a: any, b: any) =>
+        (a.item?.displayName || '').localeCompare(b.item?.displayName || '', undefined, { sensitivity: 'base' })
+      );
 
     for (const poItem of activeItems) {
       const item = poItem.item || {};

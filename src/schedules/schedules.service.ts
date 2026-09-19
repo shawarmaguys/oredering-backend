@@ -235,6 +235,10 @@ export class SchedulesService implements OnModuleInit {
       },
     });
 
+    locationItems.sort((a, b) =>
+      (a.item?.displayName || '').localeCompare(b.item?.displayName || '', undefined, { sensitivity: 'base' })
+    );
+
     // 2. Create Stock Record (draft/incomplete) in a transaction
     return this.prisma.$transaction(async (tx) => {
 

@@ -183,6 +183,12 @@ export class StockRecordsService {
       }
     }
 
+    if (record.items) {
+      record.items.sort((a, b) =>
+        (a.item?.displayName || '').localeCompare(b.item?.displayName || '', undefined, { sensitivity: 'base' })
+      );
+    }
+
     return {
       ...record,
       vendor,
@@ -281,6 +287,11 @@ export class StockRecordsService {
       });
 
       if (fullRecord) {
+        if (fullRecord.items) {
+          fullRecord.items.sort((a, b) =>
+            (a.item?.displayName || '').localeCompare(b.item?.displayName || '', undefined, { sensitivity: 'base' })
+          );
+        }
         const firstItem = fullRecord.items?.[0]?.item;
         const vendor = firstItem?.vendor;
         const department = vendor?.department;

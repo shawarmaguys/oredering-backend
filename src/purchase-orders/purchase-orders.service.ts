@@ -127,6 +127,11 @@ export class PurchaseOrdersService {
     });
 
     if (!po) throw new NotFoundException(`Purchase order with ID ${id} not found`);
+    if (po.items) {
+      po.items.sort((a, b) =>
+        (a.item?.displayName || '').localeCompare(b.item?.displayName || '', undefined, { sensitivity: 'base' })
+      );
+    }
     return po;
   }
 
