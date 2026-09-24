@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsUUID, IsNumber, Min } from 'class-validator';
+import { IsOptional, IsString, IsUUID, IsNumber, Min, IsBoolean } from 'class-validator';
 
 export class UpdateItemDto {
   @IsUUID()
@@ -37,4 +37,9 @@ export class UpdateItemDto {
   @IsString()
   @IsOptional()
   note?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
 }
+

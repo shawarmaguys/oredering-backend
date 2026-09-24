@@ -30,10 +30,9 @@ export class ItemsService {
     }
 
     const baseUnitName = itemData.baseUnitName;
-    const displayUnitName = itemData.displayUnitName && itemData.displayUnitName.trim() !== ''
-      ? itemData.displayUnitName
-      : baseUnitName;
-    const multiplier = itemData.displayUnitName && itemData.displayUnitName.trim() !== ''
+    const hasSecondary = !!(itemData.displayUnitName && itemData.displayUnitName.trim() !== '');
+    const displayUnitName = hasSecondary && itemData.displayUnitName ? itemData.displayUnitName.trim() : null;
+    const multiplier = hasSecondary
       ? (itemData.multiplier !== undefined && itemData.multiplier !== null ? itemData.multiplier : 1)
       : 1;
 
@@ -90,8 +89,10 @@ export class ItemsService {
     limit?: number;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
+    includeInactive?: boolean;
+    status?: 'all' | 'active' | 'inactive';
   } = {}) {
-    const { vendorId, productTypeId, locationId, user, search, page = 1, limit = 50, sortBy, sortOrder = 'asc' } = options;
+    const { vendorId, productTypeId, locationId, user, search, page = 1, limit = 50, sortBy, sortOrder = 'asc', includeInactive = false, status } = options;
 
     if (locationId && !isValidUUID(locationId)) {
       throw new BadRequestException('location_id query parameter must be a valid UUID.');
@@ -103,7 +104,15 @@ export class ItemsService {
       validateLocationAccess(user, locationId);
     }
 
-    const where: any = { isActive: true };
+    const isIncludeInactive = includeInactive || status === 'all' || status === 'inactive';
+    const where: any = {};
+    if (status === 'inactive') {
+      where.isActive = false;
+    } else if (status === 'active') {
+      where.isActive = true;
+    } else if (!isIncludeInactive) {
+      where.isActive = true;
+    }
     const andConditions: any[] = [];
     
     if (vendorId) {
@@ -120,7 +129,7 @@ export class ItemsService {
       where.locationItems = {
         some: {
           locationId: locationId,
-          isActive: true,
+          ...(isIncludeInactive ? {} : { isActive: true }),
         },
       };
     }
@@ -161,10 +170,12 @@ export class ItemsService {
           backupVendors: {
             include: { vendor: { select: { id: true, displayName: true, departmentId: true } } }
           },
-          locationItems: locationId ? { where: { locationId, isActive: true } } : { where: { isActive: true } },
+          locationItems: locationId
+            ? { where: { locationId, ...(isIncludeInactive ? {} : { isActive: true }) } }
+            : { where: { ...(isIncludeInactive ? {} : { isActive: true }) } },
           _count: {
             select: {
-              locationItems: { where: { isActive: true } },
+              locationItems: { where: { ...(isIncludeInactive ? {} : { isActive: true }) } },
             },
           },
         },
@@ -270,9 +281,31 @@ export class ItemsService {
     let displayUnitName = itemData.displayUnitName !== undefined ? itemData.displayUnitName : currentItem.displayUnitName;
     let multiplier = itemData.multiplier !== undefined ? itemData.multiplier : Number(currentItem.multiplier);
 
-    if (displayUnitName === undefined || displayUnitName === null || displayUnitName.trim() === '') {
-      displayUnitName = baseUnitName;
+    if (displayUnitName !== undefined) {
+      if (
+        !displayUnitName ||
+        displayUnitName.trim() === '' ||
+        (baseUnitName && displayUnitName.trim().toLowerCase() === baseUnitName.trim().toLowerCase())
+      ) {
+        displayUnitName = null;
+        multiplier = 1;
+      } else {
+        displayUnitName = displayUnitName.trim();
+      }
+    } else if (
+      currentItem.displayUnitName &&
+      baseUnitName &&
+      currentItem.displayUnitName.trim().toLowerCase() === baseUnitName.trim().toLowerCase()
+    ) {
+      displayUnitName = null;
       multiplier = 1;
+    }
+
+    if (itemData.isActive !== undefined) {
+      await this.prisma.locationItem.updateMany({
+        where: { itemId: id },
+        data: { isActive: itemData.isActive },
+      });
     }
 
     return this.prisma.item.update({
@@ -826,10 +859,12 @@ export class ItemsService {
       }
 
       const baseUnitName = itemData.baseUnitName;
-      const displayUnitName = itemData.displayUnitName && itemData.displayUnitName.trim() !== ''
-        ? itemData.displayUnitName.trim()
-        : baseUnitName;
-      const multiplier = itemData.multiplier ?? 1;
+      const hasSecondary =
+        !!(itemData.displayUnitName &&
+        itemData.displayUnitName.trim() !== '' &&
+        itemData.displayUnitName.trim().toLowerCase() !== baseUnitName.trim().toLowerCase());
+      const displayUnitName = hasSecondary && itemData.displayUnitName ? itemData.displayUnitName.trim() : null;
+      const multiplier = hasSecondary ? (itemData.multiplier ?? 1) : 1;
 
       if (row.action === 'UPDATE' && itemData.id) {
         await this.prisma.item.update({

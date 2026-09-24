@@ -58,6 +58,8 @@ export class ItemsController {
     @Query('limit') limit?: string,
     @Query('sortBy') sortBy?: string,
     @Query('sortOrder') sortOrder?: 'asc' | 'desc',
+    @Query('includeInactive') includeInactive?: string,
+    @Query('status') status?: 'all' | 'active' | 'inactive',
     @CurrentUser() user?: AuthUser,
   ) {
     return this.itemsService.findAll({
@@ -70,6 +72,8 @@ export class ItemsController {
       limit: limit ? Number.parseInt(limit, 10) : 50,
       sortBy,
       sortOrder,
+      includeInactive: includeInactive === 'true' || status === 'all' || status === 'inactive',
+      status,
     });
   }
 
