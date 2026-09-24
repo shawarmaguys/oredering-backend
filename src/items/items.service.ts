@@ -129,7 +129,7 @@ export class ItemsService {
       where.locationItems = {
         some: {
           locationId: locationId,
-          ...(isIncludeInactive ? {} : { isActive: true }),
+          isActive: true,
         },
       };
     }
@@ -171,11 +171,11 @@ export class ItemsService {
             include: { vendor: { select: { id: true, displayName: true, departmentId: true } } }
           },
           locationItems: locationId
-            ? { where: { locationId, ...(isIncludeInactive ? {} : { isActive: true }) } }
-            : { where: { ...(isIncludeInactive ? {} : { isActive: true }) } },
+            ? { where: { locationId, isActive: true } }
+            : { where: { isActive: true } },
           _count: {
             select: {
-              locationItems: { where: { ...(isIncludeInactive ? {} : { isActive: true }) } },
+              locationItems: { where: { isActive: true } },
             },
           },
         },
