@@ -2,25 +2,54 @@ import { Injectable, NotFoundException, OnModuleInit, Logger } from '@nestjs/com
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { decryptToken } from '../common/utils/crypto.util';
+import { Schedule } from '@prisma/client';
 
 @Injectable()
 export class SchedulesService implements OnModuleInit {
   private readonly logger = new Logger(SchedulesService.name);
 
+  /** In-memory cache of active schedules. Refreshed every hour. */
+  private scheduleCache: Schedule[] = [];
+  private cacheLastRefreshed: Date | null = null;
+  private static readonly CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
   constructor(private readonly prisma: PrismaService) { }
 
   onModuleInit() {
-    // Start interval to check schedules every minute
-    // Align with the next minute boundary so it checks near the 00 second mark.
+    // Load cache immediately on startup, then refresh every hour.
+    this.refreshScheduleCache();
+    setInterval(() => this.refreshScheduleCache(), SchedulesService.CACHE_TTL_MS);
+
+    // Start minute-tick aligned to the next :00 second mark.
     const now = new Date();
     const delay = (60 - now.getSeconds()) * 1000;
-
     setTimeout(() => {
       this.checkAndTriggerSchedules();
-      setInterval(() => {
-        this.checkAndTriggerSchedules();
-      }, 60 * 1000);
+      setInterval(() => this.checkAndTriggerSchedules(), 60 * 1000);
     }, delay);
+  }
+
+  /** Fetches all active schedules from DB and stores them in the in-memory cache. */
+  private async refreshScheduleCache(): Promise<void> {
+    try {
+      this.scheduleCache = await this.prisma.schedule.findMany({
+        where: { isActive: true },
+      });
+      this.cacheLastRefreshed = new Date();
+      this.logger.log(
+        `[ScheduleCache] Refreshed — ${this.scheduleCache.length} active schedule(s) cached at ${this.cacheLastRefreshed.toISOString()}`,
+      );
+    } catch (err: any) {
+      this.logger.error(
+        `[ScheduleCache] Failed to refresh schedule cache: ${err?.message || err}`,
+        err?.stack,
+      );
+    }
+  }
+
+  /** Invalidates the cache immediately (e.g., after a mutation). */
+  private async invalidateScheduleCache(): Promise<void> {
+    await this.refreshScheduleCache();
   }
 
   async checkAndTriggerSchedules() {
@@ -30,36 +59,25 @@ export class SchedulesService implements OnModuleInit {
     const currentTimeStr = `${currentHour}:${currentMinute}`;
     const currentDayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
 
-    try {
-      const activeSchedules = await this.prisma.schedule.findMany({
-        where: { isActive: true },
-      });
-
-      for (const schedule of activeSchedules) {
-        // Parse time to match
-        const [schedHour, schedMin] = schedule.triggerTime.split(':');
-        const schedTimeStr = `${schedHour.padStart(2, '0')}:${schedMin.padStart(2, '0')}`;
-
-        if (schedTimeStr === currentTimeStr) {
-          if (
-            schedule.scheduleType === 'DAILY' ||
-            (schedule.scheduleType === 'WEEKLY' && schedule.dayOfWeek === currentDayOfWeek)
-          ) {
-            this.logger.log(`[Cron Scheduler] Triggering schedule ${schedule.id} at ${currentTimeStr}`);
-            await this.trigger(schedule.id).catch((err: any) => {
-              this.logger.error(
-                `[Cron Scheduler] Failed to trigger schedule ${schedule.id}: ${err?.message || err}`,
-                err?.stack,
-              );
-            });
-          }
-        }
-      }
-    } catch (err: any) {
-      this.logger.error(
-        `[Cron Scheduler] Error running schedule checks: ${err?.message || err}`,
-        err?.stack,
+    // Use in-memory cache — no DB call on every tick.
+    const candidates = this.scheduleCache.filter((schedule) => {
+      const [schedHour, schedMin] = schedule.triggerTime.split(':');
+      const schedTimeStr = `${schedHour.padStart(2, '0')}:${schedMin.padStart(2, '0')}`;
+      if (schedTimeStr !== currentTimeStr) return false;
+      return (
+        schedule.scheduleType === 'DAILY' ||
+        (schedule.scheduleType === 'WEEKLY' && schedule.dayOfWeek === currentDayOfWeek)
       );
+    });
+
+    for (const schedule of candidates) {
+      this.logger.log(`[Cron Scheduler] Triggering schedule ${schedule.id} at ${currentTimeStr}`);
+      await this.trigger(schedule.id).catch((err: any) => {
+        this.logger.error(
+          `[Cron Scheduler] Failed to trigger schedule ${schedule.id}: ${err?.message || err}`,
+          err?.stack,
+        );
+      });
     }
   }
 
@@ -93,6 +111,9 @@ export class SchedulesService implements OnModuleInit {
       },
     });
     this.logger.log(`[SchedulesService] Created schedule "${created.id}"`);
+
+    // Invalidate cache so the new schedule is picked up immediately.
+    await this.invalidateScheduleCache();
     return created;
   }
 
@@ -116,6 +137,7 @@ export class SchedulesService implements OnModuleInit {
       where: { locationId },
       data: { isActive: false },
     });
+    await this.invalidateScheduleCache();
 
     return { success: true, message: `All triggers deactivated for location ${location.name}` };
   }
@@ -130,6 +152,7 @@ export class SchedulesService implements OnModuleInit {
       where: { locationId },
       data: { isActive: true },
     });
+    await this.invalidateScheduleCache();
 
     return { success: true, message: `All triggers activated for location ${location.name}` };
   }
@@ -149,6 +172,7 @@ export class SchedulesService implements OnModuleInit {
       where,
       data: { isActive: false },
     });
+    await this.invalidateScheduleCache();
 
     return { success: true, message: `All triggers deactivated for vendor ${vendor.displayName}` };
   }
@@ -168,6 +192,7 @@ export class SchedulesService implements OnModuleInit {
       where,
       data: { isActive: true },
     });
+    await this.invalidateScheduleCache();
 
     return { success: true, message: `All triggers activated for vendor ${vendor.displayName}` };
   }
@@ -188,7 +213,7 @@ export class SchedulesService implements OnModuleInit {
       if (!vendor) throw new NotFoundException(`Vendor with ID ${updateScheduleDto.vendorId} not found`);
     }
 
-    return this.prisma.schedule.update({
+    const updated = await this.prisma.schedule.update({
       where: { id },
       data: updateScheduleDto,
       include: {
@@ -196,6 +221,8 @@ export class SchedulesService implements OnModuleInit {
         vendor: true,
       },
     });
+    await this.invalidateScheduleCache();
+    return updated;
   }
 
   async remove(id: string) {
@@ -203,10 +230,12 @@ export class SchedulesService implements OnModuleInit {
     if (!schedule) {
       throw new NotFoundException(`Schedule with ID ${id} not found`);
     }
-    return this.prisma.schedule.update({
+    const removed = await this.prisma.schedule.update({
       where: { id },
       data: { isActive: false },
     });
+    await this.invalidateScheduleCache();
+    return removed;
   }
 
   async trigger(id: string) {
