@@ -94,8 +94,20 @@ export class ItemsController {
     @Param('id') id: string,
     @Param('locationId') locationId: string,
     @Body('parLevel') parLevel?: number,
+    @Body('isActive') isActive?: boolean,
   ) {
-    return this.itemsService.assignToLocation(id, locationId, parLevel);
+    return this.itemsService.assignToLocation(id, locationId, parLevel, isActive);
+  }
+
+  @Patch(':id/locations/:locationId')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_MANAGER, UserRole.MANAGER)
+  async updateLocationAllocation(
+    @Param('id') id: string,
+    @Param('locationId') locationId: string,
+    @Body('parLevel') parLevel?: number,
+    @Body('isActive') isActive?: boolean,
+  ) {
+    return this.itemsService.assignToLocation(id, locationId, parLevel, isActive);
   }
 
   @Delete(':id/locations/:locationId')
@@ -113,8 +125,9 @@ export class ItemsController {
   async update(
     @Param('id') id: string,
     @Body() updateItemDto: UpdateItemDto,
+    @Query('location_id') locationId?: string,
   ) {
-    return this.itemsService.update(id, updateItemDto);
+    return this.itemsService.update(id, updateItemDto, locationId);
   }
 
   @Post(':id/backup-vendors')

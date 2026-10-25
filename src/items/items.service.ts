@@ -106,13 +106,49 @@ export class ItemsService {
 
     const isIncludeInactive = includeInactive || status === 'all' || status === 'inactive';
     const where: any = {};
-    if (status === 'inactive') {
-      where.isActive = false;
-    } else if (status === 'active') {
-      where.isActive = true;
-    } else if (!isIncludeInactive) {
-      where.isActive = true;
+
+    if (locationId) {
+      if (!isIncludeInactive) {
+        where.isActive = true;
+      }
+      if (status === 'inactive') {
+        where.locationItems = {
+          some: {
+            locationId: locationId,
+            isActive: false,
+          },
+        };
+      } else if (status === 'active') {
+        where.locationItems = {
+          some: {
+            locationId: locationId,
+            isActive: true,
+          },
+        };
+      } else if (isIncludeInactive) {
+        where.locationItems = {
+          some: {
+            locationId: locationId,
+          },
+        };
+      } else {
+        where.locationItems = {
+          some: {
+            locationId: locationId,
+            isActive: true,
+          },
+        };
+      }
+    } else {
+      if (status === 'inactive') {
+        where.isActive = false;
+      } else if (status === 'active') {
+        where.isActive = true;
+      } else if (!isIncludeInactive) {
+        where.isActive = true;
+      }
     }
+
     const andConditions: any[] = [];
     
     if (vendorId) {
@@ -124,15 +160,6 @@ export class ItemsService {
       });
     }
     if (productTypeId) andConditions.push({ productTypeId });
-
-    if (locationId) {
-      where.locationItems = {
-        some: {
-          locationId: locationId,
-          isActive: true,
-        },
-      };
-    }
 
     if (search) {
       andConditions.push({
@@ -171,7 +198,7 @@ export class ItemsService {
             include: { vendor: { select: { id: true, displayName: true, departmentId: true } } }
           },
           locationItems: locationId
-            ? { where: { locationId, isActive: true } }
+            ? { where: { locationId } }
             : { where: { isActive: true } },
           _count: {
             select: {
@@ -191,6 +218,7 @@ export class ItemsService {
       return {
         ...item,
         parLevel: locItem ? Number(locItem.parLevel) : 0,
+        isActive: locationId ? (locItem ? locItem.isActive : false) : item.isActive,
         activeLocationCount: item._count?.locationItems ?? 0,
       };
     });
@@ -258,7 +286,7 @@ export class ItemsService {
     }));
   }
 
-  async update(id: string, updateItemDto: any) {
+  async update(id: string, updateItemDto: any, locationId?: string) {
     const { vendorId, ...itemData } = updateItemDto;
 
     if (vendorId) {
@@ -302,10 +330,19 @@ export class ItemsService {
     }
 
     if (itemData.isActive !== undefined) {
-      await this.prisma.locationItem.updateMany({
-        where: { itemId: id },
-        data: { isActive: itemData.isActive },
-      });
+      if (locationId) {
+        await this.prisma.locationItem.upsert({
+          where: { locationId_itemId: { locationId, itemId: id } },
+          create: { locationId, itemId: id, isActive: itemData.isActive, parLevel: 0 },
+          update: { isActive: itemData.isActive },
+        });
+        delete itemData.isActive;
+      } else {
+        await this.prisma.locationItem.updateMany({
+          where: { itemId: id },
+          data: { isActive: itemData.isActive },
+        });
+      }
     }
 
     return this.prisma.item.update({
@@ -327,15 +364,20 @@ export class ItemsService {
     });
   }
 
-  async assignToLocation(itemId: string, locationId: string, parLevel?: number) {
-    this.logger.log(`[ItemsService] Assigning item ${itemId} to location ${locationId} (parLevel: ${parLevel ?? 0})`);
+  async assignToLocation(itemId: string, locationId: string, parLevel?: number, isActive?: boolean) {
+    this.logger.log(`[ItemsService] Assigning item ${itemId} to location ${locationId} (parLevel: ${parLevel ?? 0}, isActive: ${isActive ?? true})`);
     const item = await this.prisma.item.findUnique({ where: { id: itemId } });
     if (!item) throw new NotFoundException(`Item with ID ${itemId} not found`);
 
     const location = await this.prisma.location.findUnique({ where: { id: locationId } });
     if (!location) throw new NotFoundException(`Location with ID ${locationId} not found`);
 
-    const updateData: any = { isActive: true };
+    const updateData: any = {};
+    if (isActive !== undefined) {
+      updateData.isActive = isActive;
+    } else {
+      updateData.isActive = true;
+    }
     if (parLevel !== undefined && parLevel !== null) {
       updateData.parLevel = parLevel;
     }
@@ -344,7 +386,7 @@ export class ItemsService {
       where: {
         locationId_itemId: { locationId, itemId },
       },
-      create: { locationId, itemId, parLevel: parLevel ?? 0, isActive: true },
+      create: { locationId, itemId, parLevel: parLevel ?? 0, isActive: isActive ?? true },
       update: updateData,
     });
     this.logger.log(`[ItemsService] Item ${itemId} successfully assigned to location ${locationId}`);
