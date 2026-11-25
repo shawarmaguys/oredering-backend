@@ -14,6 +14,22 @@ export class PurchaseOrdersService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  private attachLocationVendorEmails<T extends { locationId: string; vendor?: any }>(po: T): T {
+    if (!po?.vendor) return po;
+    const { locationVendors, ...vendorRest } = po.vendor;
+    const lv = Array.isArray(locationVendors)
+      ? locationVendors.find((entry: any) => entry.locationId === po.locationId)
+      : undefined;
+    return {
+      ...po,
+      vendor: {
+        ...vendorRest,
+        email: lv?.email ?? null,
+        otherEmails: lv?.otherEmails ?? null,
+      },
+    };
+  }
+
   async create(createPurchaseOrderDto: CreatePurchaseOrderDto, userId: string) {
     const { vendorId, locationId, stockRecordId, notes, items } = createPurchaseOrderDto;
     this.logger.log(`[PurchaseOrdersService] Creating PO for vendor ${vendorId} at location ${locationId} (${items?.length || 0} items, user: ${userId})`);
@@ -64,10 +80,22 @@ export class PurchaseOrdersService {
         })),
       });
 
-      return tx.purchaseOrder.findUnique({
+      const createdPo = await tx.purchaseOrder.findUnique({
         where: { id: po.id },
-        include: { items: { include: { item: true } }, vendor: true, location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } } },
+        include: {
+          items: { include: { item: true } },
+          vendor: {
+            include: {
+              locationVendors: {
+                where: { locationId },
+                select: { locationId: true, email: true, otherEmails: true },
+              },
+            },
+          },
+          location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
+        },
       });
+      return createdPo ? this.attachLocationVendorEmails(createdPo) : createdPo;
     });
   }
 
@@ -88,7 +116,13 @@ export class PurchaseOrdersService {
         select: {
           id: true,
           vendorId: true,
-          vendor: { select: { id: true, displayName: true, email: true, otherEmails: true } },
+          vendor: {
+            select: {
+              id: true,
+              displayName: true,
+              locationVendors: { select: { locationId: true, email: true, otherEmails: true } },
+            },
+          },
           locationId: true,
           location: { select: { id: true, name: true } },
           stockRecordId: true,
@@ -109,7 +143,7 @@ export class PurchaseOrdersService {
     ]);
 
     return {
-      data,
+      data: data.map((po) => this.attachLocationVendorEmails(po)),
       total,
       page,
       limit,
@@ -122,7 +156,11 @@ export class PurchaseOrdersService {
       where: { id },
       include: {
         items: { include: { item: true } },
-        vendor: true,
+        vendor: {
+          include: {
+            locationVendors: { select: { locationId: true, email: true, otherEmails: true } },
+          },
+        },
         location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
         approver: { select: { id: true, fullName: true, email: true, role: true } },
       },
@@ -134,7 +172,7 @@ export class PurchaseOrdersService {
         (a.item?.displayName || '').localeCompare(b.item?.displayName || '', undefined, { sensitivity: 'base' })
       );
     }
-    return po;
+    return this.attachLocationVendorEmails(po);
   }
 
   async update(id: string, updatePurchaseOrderDto: UpdatePurchaseOrderDto) {
@@ -157,15 +195,20 @@ export class PurchaseOrdersService {
           }),
         );
 
-        return tx.purchaseOrder.findUnique({
+        const updatedPo = await tx.purchaseOrder.findUnique({
           where: { id },
           include: {
             items: { include: { item: true } },
-            vendor: true,
+            vendor: {
+              include: {
+                locationVendors: { select: { locationId: true, email: true, otherEmails: true } },
+              },
+            },
             location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
             approver: { select: { id: true, fullName: true, email: true, role: true } },
           },
         });
+        return updatedPo ? this.attachLocationVendorEmails(updatedPo) : updatedPo;
       },
       {
         timeout: 15000,
@@ -174,18 +217,24 @@ export class PurchaseOrdersService {
   }
 
   async send(id: string, sendPurchaseOrderDto: SendPurchaseOrderDto, userId: string) {
-    const po = await this.prisma.purchaseOrder.findUnique({
+    const rawPo = await this.prisma.purchaseOrder.findUnique({
       where: { id },
       include: {
         items: { include: { item: true } },
-        vendor: { include: { department: true } },
+        vendor: {
+          include: {
+            department: true,
+            locationVendors: { select: { locationId: true, email: true, otherEmails: true } },
+          },
+        },
         location: { select: { id: true, name: true, address: true, email: true, phone: true, createdAt: true } },
         stockRecord: true,
         approver: { select: { id: true, fullName: true, email: true, role: true } },
       },
     });
 
-    if (!po) throw new NotFoundException(`Purchase order with ID ${id} not found`);
+    if (!rawPo) throw new NotFoundException(`Purchase order with ID ${id} not found`);
+    const po = this.attachLocationVendorEmails(rawPo);
 
     if (sendPurchaseOrderDto.notes !== undefined) {
       await this.prisma.purchaseOrder.update({ where: { id }, data: { notes: sendPurchaseOrderDto.notes } });

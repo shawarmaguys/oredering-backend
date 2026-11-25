@@ -37,6 +37,20 @@ export class UpdateVendorDto {
   @IsOptional()
   departmentId?: string;
 
+  @IsUUID()
+  @IsOptional()
+  locationId?: string;
+
   @IsOptional()
   locationIds?: string[];
+}
+
+export class VendorLocationEmailsDto {
+  @IsString()
+  @IsOptional()
+  email?: string | null;
+
+  @IsString()
+  @IsOptional()
+  otherEmails?: string | null;
 }

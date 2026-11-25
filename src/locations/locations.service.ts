@@ -349,6 +349,8 @@ export class LocationsService {
             data: locationVendors.map((lv) => ({
               locationId: newLocation.id,
               vendorId: lv.vendorId,
+              email: lv.email,
+              otherEmails: lv.otherEmails,
             })),
           }),
         );

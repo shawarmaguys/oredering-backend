@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { VendorsService } from './vendors.service';
 import { CreateVendorDto } from './dto/create-vendor.dto';
-import { UpdateVendorDto } from './dto/update-vendor.dto';
+import { UpdateVendorDto, VendorLocationEmailsDto } from './dto/update-vendor.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -66,8 +66,19 @@ export class VendorsController {
   async assignToLocation(
     @Param('id') id: string,
     @Param('locationId') locationId: string,
+    @Body() body?: VendorLocationEmailsDto,
   ) {
-    return this.vendorsService.assignToLocation(id, locationId);
+    return this.vendorsService.assignToLocation(id, locationId, body);
+  }
+
+  @Patch(':id/locations/:locationId')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_MANAGER)
+  async updateLocationAssignment(
+    @Param('id') id: string,
+    @Param('locationId') locationId: string,
+    @Body() body: VendorLocationEmailsDto,
+  ) {
+    return this.vendorsService.updateLocationAssignment(id, locationId, body);
   }
 
   @Delete(':id/locations/:locationId')
@@ -112,8 +123,9 @@ export class VendorsController {
   async update(
     @Param('id') id: string,
     @Body() updateVendorDto: UpdateVendorDto,
+    @Query('location_id') locationId?: string,
   ) {
-    return this.vendorsService.update(id, updateVendorDto);
+    return this.vendorsService.update(id, updateVendorDto, locationId);
   }
 
   @Delete(':id')

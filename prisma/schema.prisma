@@ -79,8 +79,6 @@ model Vendor {
   id              String           @id @default(uuid()) @db.Uuid
   displayName     String           @map("display_name")
   channelName     String?          @map("channel_name")
-  email           String?
-  otherEmails     String?          @map("other_emails")
   address1        String?
   address2        String?
   address3        String?
@@ -99,11 +97,13 @@ model Vendor {
 }
 
 model LocationVendor {
-  locationId String   @map("location_id") @db.Uuid
-  vendorId   String   @map("vendor_id") @db.Uuid
-  createdAt  DateTime @default(now()) @map("created_at")
-  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  vendor     Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  locationId  String   @map("location_id") @db.Uuid
+  vendorId    String   @map("vendor_id") @db.Uuid
+  email       String?
+  otherEmails String?  @map("other_emails")
+  createdAt   DateTime @default(now()) @map("created_at")
+  location    Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  vendor      Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   @@id([locationId, vendorId])
   @@map("location_vendors")

@@ -78,7 +78,6 @@ entity "vendors" as vendors {
     --
     display_name : varchar
     channel_name : varchar
-    email : text
     address1 : text
     address2 : text
     address3 : text
@@ -88,6 +87,18 @@ entity "vendors" as vendors {
 }
 
 departments ||--o{ vendors
+
+entity "location_vendors" as location_vendors {
+    *location_id : UUID <<FK>>
+    *vendor_id : UUID <<FK>>
+    --
+    email : text
+    other_emails : text
+    created_at : timestamp
+}
+
+locations ||--o{ location_vendors
+vendors ||--o{ location_vendors
 
 ' =========================
 ' ITEMS
