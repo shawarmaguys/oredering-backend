@@ -7,12 +7,19 @@ import { Pool } from 'pg';
 export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy {
+
   private readonly logger = new Logger('PrismaService');
+  private readonly pool: Pool;
 
   constructor() {
     const connectionString = process.env.DATABASE_URL;
-    const pool = new Pool({ connectionString });
+
+    const pool = new Pool({
+      connectionString,
+    });
+
     const adapter = new PrismaPg(pool);
+
     super({
       adapter,
       log: [
@@ -22,30 +29,40 @@ export class PrismaService
         { emit: 'event', level: 'error' },
       ],
     });
+
+    this.pool = pool;
+
+    this.$on('query' as never, ((e: any) => {
+      this.logger.log(
+        `[QUERY] ${e.duration}ms | ${e.query}`,
+      );
+    }) as never);
+
+    this.$on('info' as never, ((e: any) => {
+      this.logger.log(`[INFO] ${e.message}`);
+    }) as never);
+
+    this.$on('warn' as never, ((e: any) => {
+      this.logger.warn(`[WARN] ${e.message}`);
+    }) as never);
+
+    this.$on('error' as never, ((e: any) => {
+      this.logger.error(`[ERROR] ${e.message}`);
+    }) as never);
   }
 
   async onModuleInit() {
     this.logger.log('[Prisma] Connecting to PostgreSQL database...');
-    
-    (this as any).$on('query', (e: any) => {
-      if (e.duration >= 150) {
-        this.logger.warn(`[Prisma SLOW QUERY] (${e.duration}ms) ${e.query}`);
-      } else {
-        this.logger.debug(`[Prisma Query] (${e.duration}ms) ${e.query}`);
-      }
-    });
-
-    (this as any).$on('info', (e: any) => this.logger.log(`[Prisma Info] ${e.message}`));
-    (this as any).$on('warn', (e: any) => this.logger.warn(`[Prisma Warning] ${e.message}`));
-    (this as any).$on('error', (e: any) => this.logger.error(`[Prisma Error] ${e.message}`));
 
     await this.$connect();
+
     this.logger.log('[Prisma] Connected to database');
   }
 
   async onModuleDestroy() {
     this.logger.log('[Prisma] Disconnecting from database...');
+
     await this.$disconnect();
+    await this.pool.end();
   }
 }
-
